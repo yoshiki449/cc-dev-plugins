@@ -79,15 +79,13 @@ function classifyRootMd(name) {
   return 'manual';
 }
 
-// .gitignore に「.agent/ 全面除外」行があるか
+// .gitignore が .agent/ 配下を既定で除外しているか。
+// `.agent/*` ＋ `!.agent/<file>` の allowlist 形式も含める。部分除外（denylist）を禁じたのは
+// 新しいファイルが除外漏れで混入し続けるためで、既定除外なら新規ファイルは入らない。
+// ここに `.agent/` を足すと、ディレクトリごと除外されて `!` の例外が効かなくなる。
 function hasFullAgentIgnore(content) {
-  for (const raw of content.split('\n')) {
-    const line = raw.trim();
-    if (line === '.agent' || line === '.agent/' || line === '/.agent' || line === '/.agent/') {
-      return true;
-    }
-  }
-  return false;
+  const FULL = new Set(['.agent', '.agent/', '/.agent', '/.agent/', '.agent/*', '/.agent/*']);
+  return content.split('\n').some((raw) => FULL.has(raw.trim()));
 }
 
 // .gitignore に .agent/ を追記（既にあれば無変更）
@@ -132,6 +130,16 @@ function isDirty(repo) {
 function trackedAgentFiles(repo) {
   try {
     const out = git(repo, ['ls-files', '--', '.agent']).trim();
+    return out ? out.split('\n') : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+// 追跡中のうち .gitignore に照らして除外されるものだけ。allowlist の例外は含まれない
+function ignoredTrackedAgentFiles(repo) {
+  try {
+    const out = git(repo, ['ls-files', '-ci', '--exclude-standard', '--', '.agent']).trim();
     return out ? out.split('\n') : [];
   } catch (_err) {
     return [];
@@ -409,11 +417,13 @@ function processRepo(repo, opts) {
   }
 
   // 3. tracked な .agent/ 配下の剥がし
-  const tracked = trackedAgentFiles(repo);
+  // 今回 .agent/ を追記した場合は全部が対象（dry-run では .gitignore をまだ書いていないので git に聞けない）。
+  // 既に除外があるなら、その .gitignore で除外されるものだけを剥がし、allowlist の例外は残す。
+  const tracked = gi.changed ? trackedAgentFiles(repo) : ignoredTrackedAgentFiles(repo);
   if (tracked.length > 0) {
     if (!opts.dryRun) {
       try {
-        git(repo, ['rm', '-r', '-q', '--cached', '--', '.agent']);
+        git(repo, ['rm', '-q', '--cached', '--', ...tracked]);
       } catch (err) {
         notes.push(`[FAIL] git rm --cached .agent 失敗: ${err.message}`);
         failed = true;
