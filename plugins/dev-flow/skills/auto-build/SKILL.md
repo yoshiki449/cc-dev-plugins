@@ -69,7 +69,7 @@ Workflow({
     max_commits: 30,                  // 既定 30。ループ全体の commit 上限（超えたら halted-commits）
     max_token_per_attempt: 800000,    // 既定 800k。1 attempt の token 上限（超えたら halted-token-per-attempt）
     scope_drift_threshold: 0.4,       // 既定 0.4。supervisor が halt-scope-drift と判定する閾値
-    supervisor_model: undefined,      // 任意。generator と別モデル推奨（例: 'claude-sonnet-4-6'）
+    supervisor_model: undefined,      // 任意。generator と別モデル推奨。未指定ならメインのモデルを引き継ぐ（implementer は Sonnet なので、メインが Opus なら未指定で別モデルになる）
     stop_judge_model: undefined       // 任意。fast model 推奨（例: 'claude-haiku-4-5-20251001'）
   }
 })

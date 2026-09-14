@@ -47,6 +47,9 @@ const MAX_TOKEN_PER_ATTEMPT = A.max_token_per_attempt ?? 500_000
 const SCOPE_DRIFT_THRESHOLD = A.scope_drift_threshold ?? 0.3
 const SUPERVISOR_MODEL = A.supervisor_model // undefined なら inherit
 const STOP_JUDGE_MODEL = A.stop_judge_model // undefined なら inherit
+// SHA 取得・md 追記・テスト実行の要約・PR 作成のような雑務は Sonnet で足りる。model を省くとメインの Opus を引き継ぐので明示する。
+// 判断が要る呼び出し（修正計画）は省いたまま残す。振り分けは model-routing.test.js が全件検査する
+const CHORE_MODEL = 'sonnet'
 const TASK_ID = A.task_id
 const REVIEW_DIR = A.review_dir
 const EVIDENCE_DIR = A.evidence_dir
@@ -519,7 +522,7 @@ async function schemaAgent(prompt, opts, maxRetry = 2) {
 // （FixLoop まで到達せず fatal した場合でも state / inbox の骨格が残るようにする）
 let loopBaselineSha = await agent(
   `現在の HEAD コミット SHA を返してください。\`git rev-parse HEAD\` の出力1行のみ。`,
-  { label: 'init/loop-baseline-sha' }
+  { model: CHORE_MODEL, label: 'init/loop-baseline-sha' }
 )
 loopBaselineSha = typeof loopBaselineSha === 'string' ? loopBaselineSha.trim().split(/\s+/)[0] : ''
 
@@ -540,7 +543,7 @@ await agent(
 | attempt | commits | tokens | unit_pass | e2e_pass | qa_C | qa_M | verdict | done | reason |
 |---|---|---|---|---|---|---|---|---|---|
 \`\`\``,
-  { label: 'init/state-init' }
+  { model: CHORE_MODEL, label: 'init/state-init' }
 )
 
 // ── Issue #2 P6: fatal 時も inbox に申し送りを残すため、以降の全 phase を try/catch で包む ──
@@ -552,7 +555,7 @@ let denylistPatterns = []
 {
   const denyRaw = await agent(
     `プロジェクトの .agent/loop-denylist.txt を Read し、コメント（# 以降）と空行を除いたパターン行だけを1行1パターンで返してください。ファイルが存在しない場合は NONE とだけ返してください。`,
-    { label: 'init/denylist-load' }
+    { model: CHORE_MODEL, label: 'init/denylist-load' }
   )
   if (typeof denyRaw === 'string' && denyRaw.trim() && denyRaw.trim() !== 'NONE') {
     denylistPatterns = denyRaw.split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#'))
@@ -623,7 +626,7 @@ if (REPORT_ONLY) {
   )
   await agent(
     `${STATE_FILE} の末尾に1行 append してください: \`- report-only run: ${fixPlan.items.length} fix items planned（修正なし）\``,
-    { label: 'replan/report-only-state', phase: 'RePlan' }
+    { model: CHORE_MODEL, label: 'replan/report-only-state', phase: 'RePlan' }
   )
   log(`report-only: ${fixPlan.items.length} fix items planned — 修正せず終了`)
   return {
@@ -678,7 +681,7 @@ while (
 
   const attemptStartSha = await agent(
     `現在の HEAD コミット SHA を返してください。\`git rev-parse HEAD\` の出力1行のみ。`,
-    { label: `fix/attempt-start-sha-${attempt}`, phase: 'FixLoop' }
+    { model: CHORE_MODEL, label: `fix/attempt-start-sha-${attempt}`, phase: 'FixLoop' }
   )
   const attemptStartShaClean = typeof attemptStartSha === 'string' ? attemptStartSha.trim().split(/\s+/)[0] : ''
 
@@ -696,7 +699,7 @@ while (
 人間の手動対応、または denylist の見直しが必要です。
 
 ${JSON.stringify(blocked.map(i => ({ source_id: i.source_id, approach: i.approach, files_to_change: i.files_to_change })), null, 2)}`,
-        { label: `fix/denylist-escalate-${attempt}`, phase: 'FixLoop' }
+        { model: CHORE_MODEL, label: `fix/denylist-escalate-${attempt}`, phase: 'FixLoop' }
       )
       log(`⚠ denylist: ${blocked.length} 件の修正項目を escalate（実行せず）`)
       if (pending.length === 0) {
@@ -738,13 +741,13 @@ src_files_created には修正した実装ソースファイルを列挙する�
   const reRunUnit = await schemaAgent(
     `全ユニットテストと lint を再実行し、UnitReport schema で返してください。
 失敗ログは message に全文を貼らず 3 行以内に要約すること。`,
-    { schema: SCHEMA.UNIT_REPORT, label: `fix/unit-rerun-${attempt}`, phase: 'FixLoop' }
+    { schema: SCHEMA.UNIT_REPORT, model: CHORE_MODEL, label: `fix/unit-rerun-${attempt}`, phase: 'FixLoop' }
   )
   const reRunE2E = await schemaAgent(
     `npm run test:e2e を再実行し、TestResult schema で返してください。
 新たに生成された video.webm のパスを failure_details.message に必ず含めること。
 エラーログ自体は 3 行以内に要約すること。`,
-    { schema: SCHEMA.TEST_RESULT, label: `fix/e2e-rerun-${attempt}`, phase: 'FixLoop' }
+    { schema: SCHEMA.TEST_RESULT, model: CHORE_MODEL, label: `fix/e2e-rerun-${attempt}`, phase: 'FixLoop' }
   )
 
   // QA 再探索（影響箇所周辺のみ）
@@ -786,7 +789,7 @@ QAEvidence schema で証跡目録を返してください。`,
 - 上記宣言に含まれないファイルを unexpected_files[] にリストアップ
 - \`git diff --stat ${attemptStartShaClean}..HEAD\` のサマリを diff_summary に
 AttemptDiffStats schema で返答。`,
-    { schema: SCHEMA.ATTEMPT_DIFF_STATS, label: `fix/diff-stats-${attempt}`, phase: 'FixLoop' }
+    { schema: SCHEMA.ATTEMPT_DIFF_STATS, model: CHORE_MODEL, label: `fix/diff-stats-${attempt}`, phase: 'FixLoop' }
   )
 
   // 実 commit 数は diffStats から取得する（commit_sha 個数では 1 item 複数 commit を undercount するため、#2 対策）
@@ -884,7 +887,7 @@ unmet until proven met のスタンスで、疑わしければ done=false にす
   await agent(
     `${STATE_FILE} に attempt ${attempt} の行を append してください（既存テーブルに1行追加）:
 | ${attempt} | ${commitsInAttempt} (累計 ${commitsUsed}) | ${tokensThisAttempt} | ${unitPassed} | ${e2ePassed} | ${qaCritical.length} | ${qaMajor.length} | ${supervisorVerdict?.verdict ?? 'unknown'} | ${stopJudgeResult?.done ?? 'unknown'} | ${(supervisorVerdict?.reason ?? '').slice(0, 80).replace(/\|/g, '\\|')} |`,
-    { label: `fix/state-append-${attempt}`, phase: 'FixLoop' }
+    { model: CHORE_MODEL, label: `fix/state-append-${attempt}`, phase: 'FixLoop' }
   )
 
   prevUnitPassed = unitPassed
@@ -956,7 +959,7 @@ unmet until proven met のスタンスで、疑わしければ done=false にす
 3. 続行する場合は問題箇所を解消してから /auto-feedback で再開
 4. ロールバックする場合は loop_baseline_sha=${loopBaselineSha} に \`git reset\`
 \`\`\``,
-      { label: `fix/inbox-halt-${attempt}`, phase: 'FixLoop' }
+      { model: CHORE_MODEL, label: `fix/inbox-halt-${attempt}`, phase: 'FixLoop' }
     )
     break
   }
@@ -992,12 +995,12 @@ await parallel([
   () => schemaAgent(
     `e2e/test-results/ の最新 video.webm を ${REVIEW_DIR}videos/e2e/ に上書きコピーし、
 VideoIndex schema (source: "e2e") で返してください。`,
-    { schema: SCHEMA.VIDEO_INDEX, label: 'collect/e2e-fb', phase: 'CollectReviewAssets' }
+    { schema: SCHEMA.VIDEO_INDEX, model: CHORE_MODEL, label: 'collect/e2e-fb', phase: 'CollectReviewAssets' }
   ),
   () => schemaAgent(
     `${EVIDENCE_DIR}qa/videos/ の最新動画を ${REVIEW_DIR}videos/qa/ に上書きコピーし、
 VideoIndex schema (source: "qa") で返してください。録画なしなら videos=[] でよい。`,
-    { schema: SCHEMA.VIDEO_INDEX, label: 'collect/qa-fb', phase: 'CollectReviewAssets' }
+    { schema: SCHEMA.VIDEO_INDEX, model: CHORE_MODEL, label: 'collect/qa-fb', phase: 'CollectReviewAssets' }
   ),
 ])
 
@@ -1012,7 +1015,7 @@ const reviewIndex = await schemaAgent(
 - total_attempts: ${attempt + 1}
 - 不明瞭フィードバック (needs_clarification): ${unclear.length} 件あれば末尾に列挙
 ${REVIEW_DIR}review-video-index.md を上書きで再生成すること。`,
-  { schema: SCHEMA.REVIEW_INDEX, label: 'finalize/review-index-fb', phase: 'Finalize' }
+  { schema: SCHEMA.REVIEW_INDEX, model: CHORE_MODEL, label: 'finalize/review-index-fb', phase: 'Finalize' }
 )
 
 // 変更理解ドキュメント（explain-diff）再生成 — フィードバック反映後の差分を人間が理解するため
@@ -1037,7 +1040,7 @@ await agent(
 - 不明瞭フィードバック: ${unclear.length === 0 ? 'なし' : JSON.stringify(unclear)}
 gh pr comment <PR番号> --body-file <一時ファイル> で投稿。
 PR 番号が分からなければ gh pr list --head <current branch> から取得。`,
-  { label: 'finalize/pr-comment', phase: 'Finalize' }
+  { model: CHORE_MODEL, label: 'finalize/pr-comment', phase: 'Finalize' }
 )
 
 return {
@@ -1074,7 +1077,7 @@ return {
 - 推奨: /auto-feedback を再起動する前に FATAL の原因を除去すること
 - ロールバック手順: git reset --hard ${loopBaselineSha || '<loop_baseline_sha>'}
 \`\`\``,
-    { label: 'finalize/fatal-inbox' }
+    { model: CHORE_MODEL, label: 'finalize/fatal-inbox' }
   )
   throw fatalErr
 }

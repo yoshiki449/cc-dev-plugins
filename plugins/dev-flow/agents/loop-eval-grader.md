@@ -2,7 +2,7 @@
 name: loop-eval-grader
 description: /loop-eval の採点エージェント。loop-eval-run.sh が収集した成果物（metrics.json / agent/ / git-log / npm-test 等）とシナリオの assertions を突き合わせ、assertion ごとに PASS/FAIL（部分点なし・疑わしきは FAIL）を判定して grading.json を出力する。skill-creator の grader 流儀（evidence 必須・eval 自体への批評 eval_feedback 付き）。トラップシナリオでは「止まるべき時に止まった」が PASS で、タスクをうまく完遂してしまったら FAIL。コードは書かない。
 tools: Read, Bash, Grep, Glob, Write
-model: inherit
+model: sonnet
 maxTurns: 30
 ---
 
