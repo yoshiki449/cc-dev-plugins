@@ -165,6 +165,12 @@ cwd のリポジトリを見ても push される中身とは別物になる。2
 bash plugins/git-secret-guard/scripts/publish-scan.sh --force --all
 ```
 
+**PR は rebase マージにする。** squash マージとマージコミットは GitHub がコミットを作り直し、著者に
+アカウントのメールアドレスを入れる。GitHub 上で作られるコミットは push 前の走査を通らないので、
+手元のコミットを noreply にしていても公開 main に実在のアドレスが載る（実測: squash マージした PR で
+1件載り、履歴を書き換えても PR から SHA で参照できるため取り消せなかった）。rebase マージは元の著者を保つ。
+マージ後に `publish-scan.sh --force --all` で commit-meta に検出が無いことを確かめる。
+
 ## やってはいけないこと
 
 1. **秘密の値を直書きしてコミットする**（history に残り、ローテーションが必須になる）
