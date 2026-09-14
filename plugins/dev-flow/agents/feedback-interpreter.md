@@ -107,3 +107,9 @@ maxTurns: 15
 ```
 
 > 上の FB2 は REQUIREMENTS.md にパスワードリセット機能が存在するか確認しないと spec-addition の範囲が広いため、needs_clarification=true として人間判断を待つのが妥当。
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

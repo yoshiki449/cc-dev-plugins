@@ -131,7 +131,11 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
    4. 指摘が0件なら「0件」と明記して返す
    <!-- /subagent-output-contract:body-return -->
 
-3. **overlay の `reviewer_agent` には追加で** 判定器が返した `file` のパスを渡す（そのファイルに並ぶ観点を全て見る）。`overlay_applied=0` のときはこの1体を起動せず、未起動である事実を Q5 に残す
+3. **overlay の `reviewer_agent` には追加で** 判定器が返した `file` のパスを渡す（そのファイルに並ぶ観点を全て見る）。`overlay_applied=0` のときはこの1体を起動せず、未起動である事実を Q5 に残す。overlay のエージェントは dev-flow の外で定義されていて [advisor の扱い](../_shared/reference/advisor-policy.md) が本文に届かないので、次の1行もプロンプトに**そのまま含める**:
+
+   <!-- advisor-policy:reviewer -->
+   - advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+   <!-- /advisor-policy:reviewer -->
 4. 評価エージェントはブラウザを使わない（証跡ファイルのみ分析）
 5. 呼び出し側の義務（[契約](../_shared/reference/subagent-output-contract.md)より。文言はそのまま）:
 

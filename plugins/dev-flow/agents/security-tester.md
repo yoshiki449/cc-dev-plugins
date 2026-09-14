@@ -102,3 +102,9 @@ dev-verify フェーズの D4.5 を独立して担当し、機能テストとは
 このエージェントは dev-verify の `e2e-test-generator` と**観点が独立**しているため並列起動を許容する。ただし以下のリソース競合に注意:
 - Playwright MCP のブラウザは1セッション。同時操作はしない（chrome-devtools 側で動かすか、e2e-test-generator がコード生成中の間に検証を進める）
 - ログイン情報・テストデータは事前に共有しておく
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

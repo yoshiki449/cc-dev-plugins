@@ -78,3 +78,9 @@ maxTurns: 20
 - 指定された出力先 md 以外への Write（`Write` を持つのはレポートを書くためだけ）
 - バグ・セキュリティの指摘（それぞれ Code-Reviewer / security-tester の責務）
 - 規約系の指摘（convention-reviewer の責務）
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

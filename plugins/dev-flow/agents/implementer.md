@@ -81,3 +81,9 @@ maxTurns: 50
 - カバレッジ稼ぎのデッドコード追加
 - 「あとで便利だから」と未テスト機能を実装すること
 - TODO コメントを残してテストをスキップ扱いにすること
+
+## advisor の扱い
+
+<!-- advisor-policy:implementer -->
+- advisor ツールは、同じエラーが2回続いて原因を特定できないときだけ呼ぶ。着手前・完了前の確認のためには呼ばない
+<!-- /advisor-policy:implementer -->

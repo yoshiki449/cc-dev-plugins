@@ -114,3 +114,9 @@ color: green
 - `network-requests.md` — ネットワークログ（4xx/5xx抜粋＋全量）
 
 最後に、探索結果のサマリー（ゴール到達状況・収集した証跡ファイル一覧）を報告する。
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

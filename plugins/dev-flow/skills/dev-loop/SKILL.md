@@ -55,9 +55,10 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, gh
 | 6 | `halted-checkpoint` | `loop-supervisor` が `escalate-human` を返した | 人間判断要求 |
 | 7 | `halted-thrashing` | 直近2回の findings が `path × normalize(summary)` ハッシュ一致 | 改善が進まないループ（機械的検知） |
 | 8 | `halted-iter` | iteration 数 > `max_iterations` | iter 上限 |
-| 9 | `halted-user` | ユーザーが「中断」を選択（verify OK 後 or 緊急 AskUserQuestion 中） | ユーザー停止 |
-| 10 | `halted-superseded` | 多重起動時に「強制新規開始」が選ばれて旧進捗が無効化 | 多重起動制御 |
-| 11 | `done` | verify OK 後に `stop-judge` が done=true を返し、ユーザーが「完了」を選択 | 正常完了 |
+| 9 | `halted-context` | iteration 境界（L1.6）で `context-size.mjs` の `over` が `true`（メインセッションのコンテキストが 400K トークン以上） | 肥大したまま続行しない |
+| 10 | `halted-user` | ユーザーが「中断」を選択（verify OK 後 or 緊急 AskUserQuestion 中） | ユーザー停止 |
+| 11 | `halted-superseded` | 多重起動時に「強制新規開始」が選ばれて旧進捗が無効化 | 多重起動制御 |
+| 12 | `done` | verify OK 後に `stop-judge` が done=true を返し、ユーザーが「完了」を選択 | 正常完了 |
 
 すべての halted-* 終了時、ユーザーに以下を提示する:
 - 進捗ファイル `.agent/devloop-<TS>.md` のパス
@@ -160,7 +161,7 @@ max_loop_runtime_minutes: 60
 <!-- 以降 iteration ごとに追記 -->
 
 ## 最終状態
-- final_status: in_progress  # done / halted-iter / halted-commits / halted-commits-per-iter / halted-runtime / halted-thrashing / halted-error / halted-user / halted-superseded
+- final_status: in_progress  # done / halted-iter / halted-commits / halted-commits-per-iter / halted-runtime / halted-context / halted-thrashing / halted-error / halted-user / halted-superseded
 - total_iterations: 0
 - total_commits: 0
 - closed_at: -
@@ -312,6 +313,7 @@ supervisor の verdict は機械的ガード（max_*）と **同じ強度の har
 - iteration カウンタ +1
 - `elapsed_minutes ≥ max_loop_runtime_minutes` なら `halted-runtime` で L2 へ
 - `iteration > max_iterations` なら `halted-iter` で L2 へ
+- `node skills/_shared/scripts/context-size.mjs` でコンテキスト量を測り、`over` が `true` なら `halted-context` で L2 へ（Claude は自分で `/clear` できないので、続けると区切りが無いのと同じになる。理由と閾値は [advisor の扱いとコンテキストの区切り](../_shared/reference/advisor-policy.md)）。`tokens` が `null` なら `warning` を進捗ファイルに1行残して続行する
 - そうでなければ L1.1 へ
 
 > **Hard cap は途中で緩められない**: ループ内部で AskUserQuestion により「あと1回だけ続けますか」のような上書きは禁止。上限を変えたい場合は halted-* で一度終了させ、次回起動時に引数で渡す。
@@ -337,6 +339,7 @@ supervisor の verdict は機械的ガード（max_*）と **同じ強度の har
    - `done`: 「ループ完了。次は `/dev-ship` で PR 作成 or `/dev-qa` で QA を回せます」
    - `halted-iter` / `halted-commits` / `halted-thrashing`: 「自動収束しなかったため、`/dev-fix` で個別対応 or `loop_baseline_sha` にロールバックを検討してください」
    - `halted-user`: 「ユーザー中断。再開は `/dev-loop resume` で可能」
+   - `halted-context`: 測った `tokens` の値を示し、「コンテキストが大きくなったため止めました。`/clear` してから `/dev-loop resume` で続きを再開してください」
    - `halted-error`: エラー詳細を提示し、人間判断を仰ぐ
 6. TaskList の最終クリーンアップ
 

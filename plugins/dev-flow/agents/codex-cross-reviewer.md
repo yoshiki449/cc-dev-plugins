@@ -106,3 +106,9 @@ gh issue view <Issue番号> --json title,body > /tmp/codex-review-issue.json
 - Codex の生レスポンスをそのまま貼り付けず、必ず要約・分類して報告する
 - 「Codex が言ったから正しい」と扱うこと（Claude 側で再確認して採否を決める）
 - 機密コード（`.env` 値・実APIキー・個人情報）を Codex に送ること
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

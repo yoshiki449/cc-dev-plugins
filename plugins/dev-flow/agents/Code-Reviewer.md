@@ -39,3 +39,9 @@ color: green
 
 - コードの編集（指摘までが責務。修正は `/dev-fix` に委ねる）
 - 指定された出力先 md 以外への Write（`Write` を持つのはレポートを書くためだけ）
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

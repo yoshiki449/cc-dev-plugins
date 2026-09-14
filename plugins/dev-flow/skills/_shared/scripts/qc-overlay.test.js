@@ -304,6 +304,7 @@ test('AC19: 消費側 7 ファイルすべてが報告義務の正準1文を byt
 // denylist（「この名前のファイルが無いこと」）だと、別の名前で置かれた瞬間に素通りする。
 // allowlist にしておけば、ここに無いファイルが `_shared/reference/` に現れた時点で落ちる。
 const ALLOWED_REFERENCES = [
+  'advisor-policy.md',
   'core-flow.md',
   'handover-template.md',
   'qc-overlay.md',

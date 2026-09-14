@@ -108,3 +108,9 @@ G1〜G4 は数値判定。G5〜G6 は意味的判定。
 - 「だいたい OK そう」での done=true（具体的な G1-G6 チェック必須）
 - supervisor verdict への言及（役割が違うので参照しない）
 - 「次に何をすべきか」の提案（それは supervisor の責務）
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

@@ -14,6 +14,8 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `reference/subagent-output-contract.md` | サブエージェント成果物の受け渡し契約（起動プロンプト項目・呼び出し側の義務）。消費者は下表 |
 | `reference/requirement-elicitation.md` | 要求の深掘り手順（要求カード・曖昧さの検出・解決策の妥当性チェック・終了条件）。消費者は下表 |
 | `reference/scope-discipline.md` | 実装・修正を頼まれた範囲で仕上げるための一文（Opus 5 の範囲拡大対策）。消費者は下表 |
+| `reference/advisor-policy.md` | サブエージェントに advisor をいつ呼ばせるかと、メインセッションを `/clear` させる区切り。消費者は下表 |
+| `scripts/context-size.mjs [--threshold N]` | 現在のメインセッションのコンテキスト量を JSON 1 行で返す（既定の閾値 400K。判定不能でも exit 0） |
 
 ## サブエージェント成果物の受け渡し契約の消費者
 
@@ -49,6 +51,54 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `dev-implement` | `## 手順` |
 | `dev-fix` | `### F4. ソースコードの修正` |
 | `dev-loop` | `#### L1.2 implement または fix を実行` |
+
+## advisor の扱いの消費者
+
+`reference/advisor-policy.md` の正準の文は、エージェント定義の末尾の `## advisor の扱い` 節と、エージェント定義を経由しない起動プロンプトに**複製で置く**。`scripts/advisor-policy.test.js` がこの表と実ファイルを突き合わせる。
+
+**エージェント定義**（`agents/` の全ファイルを1回ずつ載せる。載っていないエージェントがあるとテストが落ちる）
+
+| エージェント | 分類 |
+|---|---|
+| `adversarial-verifier` | reviewer |
+| `Code-Reviewer` | reviewer |
+| `codex-cross-reviewer` | reviewer |
+| `convention-reviewer` | reviewer |
+| `requirement-coverage-checker` | reviewer |
+| `simplify-reviewer` | reviewer |
+| `security-tester` | reviewer |
+| `autonomous-tester` | reviewer |
+| `qa-explorer` | reviewer |
+| `qa-goal-evaluator` | reviewer |
+| `qa-technical-evaluator` | reviewer |
+| `qa-ux-evaluator` | reviewer |
+| `explain-diff-generator` | reviewer |
+| `test-ledger-writer` | reviewer |
+| `test-spec-walker` | reviewer |
+| `stop-judge` | reviewer |
+| `loop-supervisor` | reviewer |
+| `loop-eval-grader` | reviewer |
+| `feedback-interpreter` | reviewer |
+| `test-writer` | implementer |
+| `implementer` | implementer |
+| `e2e-test-generator` | implementer |
+| `japanese-coding-specialist` | implementer |
+| `Debugger` | implementer |
+| `tdd-implementer` | implementer |
+| `designer` | none |
+| `spec-writer` | none |
+| `ui-designer` | none |
+| `Spec` | none |
+| `project-orchestrator` | none |
+
+**スキル**（節名は「」で囲む。見出しにバッククォートを含むものがあるため）
+
+| スキル | 文 | 節 |
+|---|---|---|
+| `dev-ship` | reviewer | 「#### E1.5b. セキュリティレビュー（`gates.security_review` で条件化）」 |
+| `dev-qa` | reviewer | 「### Q4. 観点別評価（3〜4エージェント並列）」 |
+| `dev-implement` | context-check | 「### Step 5: 引継書更新 ⚠ 必須（スキップ不可）」 |
+| `dev-verify` | context-check | 「### D7. 引継書更新 ⚠ 必須（スキップ不可）」 |
 
 ## 設計方針
 

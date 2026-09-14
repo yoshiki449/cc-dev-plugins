@@ -78,3 +78,9 @@ maxTurns: 20
 - 指定された出力先 md 以外への Write（`Write` を持つのはレポートを書くためだけ）
 - 一般的なコード品質指摘（重複・命名の良し悪し以外の指摘は Code-Reviewer に委ねる）
 - DEVELOPMENT.md に書かれていないルールを「常識」として強制すること（規約が明文化されていなければ Minor + 信頼度70以下）
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

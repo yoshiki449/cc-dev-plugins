@@ -220,6 +220,11 @@ fi
   - 観点: OWASP Top 10（XSS / SQLi / SSRF / IDOR / CSRF / デシリアライゼーション / 機密情報漏洩 等）
   - **絶対パスで渡すこと**: Bash の cwd はターン間で launch dir に戻るため、
     相対パスだと別ディレクトリを検査して「指摘0件」を返す
+  - `general-purpose` にはエージェント定義の [advisor の扱い](../_shared/reference/advisor-policy.md) が届かないので、次の1行を指示に**そのまま含める**:
+
+    <!-- advisor-policy:reviewer -->
+    - advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+    <!-- /advisor-policy:reviewer -->
 
 検出された問題の分類:
 - **Critical / High**: PR作成前に必ず修正 → 修正後に再レビュー

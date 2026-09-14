@@ -58,3 +58,9 @@ diff だけを読んで書き始めてはならない。変更された各ファ
 - 対象リポジトリのコードを変更・コミットする（読むだけ。`.agent/explanations/` への HTML 保存のみ可）
 - `.agent/explanations/` 以外のリポジトリ内の場所（docs/ やルート直下等の tracked な場所）に HTML を保存する
 - クイズを飾りにする（クリックしても反応しない静的リスト）
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

@@ -172,3 +172,9 @@ maxTurns: 20
 - コード・テストファイルの編集
 - `.agent/test-ledger/<Issue番号>.md` 以外への Write
 - 入力レポートが両方欠けているのに、空の台帳や推測の台帳を書くこと
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

@@ -220,7 +220,13 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
    - 残すべき主要画面のスクリーンショット・レビュー用動画（`e2e/test-results/` から `.agent/evidence/<Issue番号>/` にコピーし、パスで参照。次回のテスト実行で消えるため必ずコピー）
    - 未修正バグ一覧
    - ユーザーフィードバックで未対応のもの
-3. 次のアクションをユーザーに確認:
+3. コンテキストの区切りを判定する（[advisor の扱いとコンテキストの区切り](../_shared/reference/advisor-policy.md)。文言はそのまま）。次の 4 の確認はこの結果に従う:
+
+   <!-- advisor-policy:context-check -->
+   - 引継書を書いたら `node skills/_shared/scripts/context-size.mjs` でコンテキスト量を測る。`over` が `true` なら、次に進むかを尋ねる代わりに、測った `tokens` の値を示して「`/clear` してから次のコマンドを打ってください」と伝える。`tokens` が `null` なら `warning` をそのまま示し、従来どおり尋ねる
+   <!-- /advisor-policy:context-check -->
+
+4. 次のアクションをユーザーに確認:
    - **未実装 Phase が残っている場合**: 「Phase N の検証が完了しました。/clear して次 Phase（Phase N+1）の実装（/dev-implement）に進めますか？」
    - **全 Phase の実装・検証が完了した場合**（正準順は verify → test-spec → qa → 台帳 → ship）:
      - テスト仕様書が必要な案件 → 「全 Phase の実装・検証が完了しました。/clear してテスト仕様書フェーズ（/dev-test-spec）に進めますか？」

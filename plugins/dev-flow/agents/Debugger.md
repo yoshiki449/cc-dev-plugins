@@ -30,3 +30,9 @@ color: yellow
 - 予防推奨事項
 
 症状ではなく、根本的な問題の修正に焦点を当ててください。
+
+## advisor の扱い
+
+<!-- advisor-policy:implementer -->
+- advisor ツールは、同じエラーが2回続いて原因を特定できないときだけ呼ぶ。着手前・完了前の確認のためには呼ばない
+<!-- /advisor-policy:implementer -->

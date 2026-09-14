@@ -125,3 +125,9 @@ dev-flow は組織固有の品質観点を同梱しない。差し込みの契�
 ## 並列実行ガイド
 
 このエージェントは **per-attempt 1 体**を想定（並列起動しない）。supervisor の出力がそのまま workflow の制御フローに使われるため、複数 verdict を統合する複雑性を避ける。
+
+## advisor の扱い
+
+<!-- advisor-policy:reviewer -->
+- advisor ツールは呼ばない。このエージェントの役割そのものが検証であり、advisor を呼ぶと同じ観点の二重レビューになる。advisor にはこのエージェントの履歴全体がキャッシュなしで送られる
+<!-- /advisor-policy:reviewer -->

@@ -295,6 +295,11 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <REPO_ROOT> --main-model
    - ユーザーからの指示・フィードバック
    - 却下した案と理由
    - Deviations（`.agent/deviations-wip.md` を転記して削除。無ければ「逸脱なし」と1行）
+3. コンテキストの区切りを判定する（[advisor の扱いとコンテキストの区切り](../_shared/reference/advisor-policy.md)。文言はそのまま）。Step 6 の確認はこの結果に従う:
+
+   <!-- advisor-policy:context-check -->
+   - 引継書を書いたら `node skills/_shared/scripts/context-size.mjs` でコンテキスト量を測る。`over` が `true` なら、次に進むかを尋ねる代わりに、測った `tokens` の値を示して「`/clear` してから次のコマンドを打ってください」と伝える。`tokens` が `null` なら `warning` をそのまま示し、従来どおり尋ねる
+   <!-- /advisor-policy:context-check -->
 
 ### Step 6: Phase 完了後の検証（implement → verify 繰り返し）
 

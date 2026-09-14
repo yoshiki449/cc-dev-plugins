@@ -704,3 +704,9 @@ test('登録できること', async ({ page }, testInfo) => {
 - テストデータヘルパー（test-data.ts）があれば再利用、なければ作成
 - 共通のセットアップ処理はbeforeAll/beforeEachに配置
 - data-testid属性がある場合はそれを使用、なければテキストで要素を特定
+
+## advisor の扱い
+
+<!-- advisor-policy:implementer -->
+- advisor ツールは、同じエラーが2回続いて原因を特定できないときだけ呼ぶ。着手前・完了前の確認のためには呼ばない
+<!-- /advisor-policy:implementer -->
