@@ -7,10 +7,11 @@
 | もの | 届くか | 手当て |
 |---|---|---|
 | リポジトリの `CLAUDE.md`・`.claude/rules/`・`.claude/skills/`・`.claude/agents/` | 届く | — |
-| リポジトリの `.claude/settings.json`（hook・plugin 宣言） | 届く | plugin はセッション開始時に marketplace からインストールされる |
+| リポジトリの `.claude/settings.json` の hook | 届く | — |
+| リポジトリの `.claude/settings.json` の plugin 宣言 | **効かない**（ドキュメントでは入るとされるが実測で入らない） | Setup script で `claude plugin install --scope user` する |
 | リポジトリの `.mcp.json` | 届く | 対話で承認できないので `enabledMcpjsonServers` で有効化しておく |
 | `~/.claude/CLAUDE.md`・`~/.claude/skills/` | 届かない | 必要な部分をリポジトリの `.claude/rules/` などにコミットする |
-| ユーザー設定でだけ有効にした plugin | 届かない | このスキルがリポジトリ側に宣言する |
+| ユーザー設定でだけ有効にした plugin | 届かない | Setup script で入れる |
 | `claude mcp add` で user / local scope に足した MCP | 届かない | `--scope project` で `.mcp.json` に書いてコミットする |
 | `.gitignore` 済みのファイル（`.env` など） | 届かない | `scripts/cloud-session-init.sh` でセッションごとに作る |
 
@@ -22,18 +23,30 @@
 このスキルが代わりに書き込むことはできません。環境はアカウント単位なので、リポジトリごとに環境を分けると
 Setup script を混ぜずに済みます。
 
-## Network access（既定 Trusted）に業務 SaaS のドメインは含まれない
+## ドキュメントと違っていた点（2026-09 実測、claude 2.1.270）
 
-Trusted の許可リストはパッケージレジストリ・GitHub・Docker Hub・主要クラウドの SDK などです。
-業務 SaaS の API や、Playwright のブラウザ配布元（`cdn.playwright.dev` / `playwright.download.prss.microsoft.com`）は
-含まれません。これらと通信するリポジトリでは、環境の Network access を **Custom** にしてホストを足してください
-（「既定のリストを含める」にチェックすると Trusted の分も残ります）。
+| 項目 | 実際 | 手当て |
+|---|---|---|
+| plugin | リポジトリの settings.json に宣言しても入らない。SessionStart hook から入れても、そのセッションには間に合わない | Setup script で入れる（テンプレートにある） |
+| gh | プリインストールされていない | Setup script で apt から入れる。入らないときは GitHub MCP を使う |
+| apt | ベースイメージの PPA が 403 で `apt-get update` が非ゼロ終了する | `&&` でつながず、update の失敗で install を止めない |
+| 日本語フォント | 既定の日本語フォントが中国語フォント（WenQuanYi Zen Hei）で、スクリーンショットの字形がずれる | `fonts-noto-cjk` を入れる |
+| Docker Hub | 既定の許可リストにある `production.cloudflare.docker.com` ではなく `production.cloudfront.docker.com` から配られ、403 で pull できない | Network access を Custom にして足す |
+| Docker ビルド | VM はプロキシの自己署名 CA 越しに外へ出るので、ビルドコンテナ内の pip / npm が `CERTIFICATE_VERIFY_FAILED` | `/root/.ccr/ca-bundle.crt` をビルドに渡す（SKILL.md の実行手順3） |
+| Playwright | `/opt/pw-browsers` にプリインストールされたブラウザが、`@playwright/test` や playwright MCP の要求する版と違う | セッション初期化で `npx playwright install chromium chromium-headless-shell`、MCP は `npx @playwright/mcp@<版> install-browser chrome-for-testing` |
 
-## GitHub の認証は要らない
+## Network access は Custom にして既定のリストを残す
 
-`gh` はプリインストール済みで、GitHub への通信は専用のプロキシが認証を差し込みます。`GH_TOKEN` を
-環境変数に置く必要はありません。ただし GraphQL は PR 系の決まった操作しか通らず、
-GitHub API とリリース資産はセッションに紐づくリポジトリにしか届きません。
+既定の Trusted に無いドメインを使うときは Custom にします。**「Also include default list of common package managers」に
+チェックを入れないと、書いたドメインしか通らなくなります。** 足す候補は、Docker Hub の配信元
+`production.cloudfront.docker.com`、Playwright のブラウザ配布元（`cdn.playwright.dev` /
+`playwright.download.prss.microsoft.com`）、業務 SaaS の API です。
+
+## GitHub の認証
+
+GitHub への通信は専用のプロキシが認証を差し込み、`GH_TOKEN` は `proxy-injected` という仮の値になっています。
+自分でトークンを置く必要はありません。GraphQL は PR 系の決まった操作しか通らず、GitHub API とリリース資産は
+セッションに紐づくリポジトリにしか届きません。
 
 ## 秘密の値の渡し方
 

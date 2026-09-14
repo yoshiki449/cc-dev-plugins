@@ -1,28 +1,23 @@
 #!/usr/bin/env bash
 # 対象Gitリポジトリに Claude Code のクラウドセッション向けの設定一式
-# （.claude/settings.json の plugin 宣言＋SessionStart hook、scripts/install_pkgs.sh）を配置し、
-# 環境設定ダイアログの「Setup script」欄に貼るテンプレートを提示する。
+# （.claude/settings.json の SessionStart hook、scripts/install_pkgs.sh）を配置し、
+# 環境設定ダイアログの「Setup script」欄に貼るテンプレート（plugin の導入を含む）を提示する。
 #
-# 使い方: apply_cloud_env_setup.sh [--no-plugins] [対象ディレクトリ（省略時はカレント）]
+# 使い方: apply_cloud_env_setup.sh [対象ディレクトリ（省略時はカレント）]
 #
 # 冪等性: 既に配置済みの環境で再実行しても安全（install_pkgs.sh は上書きせず警告、
-# settings.json の hook・plugin 宣言は重複登録しない）。
+# settings.json の hook は重複登録しない）。
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# クラウドは ~/.claude/settings.json を持ち込まないので、リポジトリ側に宣言しないと plugin が入らない。
-# owner/repo の短縮形は SSH で clone するのが既定なので、HTTPS の git URL で書く。
-MARKETPLACE_NAME="cc-dev-plugins"
-MARKETPLACE_URL="https://github.com/yoshiki449/cc-dev-plugins.git"
-# cc-meta は ~/.cc-plugins/.env が無いと exit 2 で止まるので、クラウドには入れない。
-PLUGINS=(dev-flow poc-flow git-secret-guard)
-
-DECLARE_PLUGINS=1
+# plugin はリポジトリの settings.json に宣言してもクラウドでは入らず（2026-09 実測）、Setup script で
+# 入れた分と二重に出るので、ここでは宣言を書かない。導入は assets/setup-script-template.sh が持つ。
 TARGET_DIR=""
 for arg in "$@"; do
     case "$arg" in
-        --no-plugins) DECLARE_PLUGINS=0 ;;
+        # 以前は plugin 宣言を省く指定だった。宣言自体を書かなくなったので、互換のため受け付けて無視する
+        --no-plugins) ;;
         *) TARGET_DIR="$arg" ;;
     esac
 done
@@ -95,35 +90,22 @@ else
     log "作成: $INSTALL_SCRIPT"
 fi
 
-# === 3. .claude/settings.json に SessionStart hook と plugin 宣言を冪等にマージ ===
+# === 3. .claude/settings.json に SessionStart hook を冪等にマージ ===
 mkdir -p .claude
 SETTINGS=".claude/settings.json"
 HOOK_COMMAND='"$CLAUDE_PROJECT_DIR"/scripts/install_pkgs.sh'
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 
-PLUGINS_JSON=$(printf '%s\n' "${PLUGINS[@]}" | jq -R . | jq -s .)
 TMP=$(mktemp)
-jq --arg cmd "$HOOK_COMMAND" \
-   --argjson declare "$DECLARE_PLUGINS" \
-   --arg mp "$MARKETPLACE_NAME" \
-   --arg url "$MARKETPLACE_URL" \
-   --argjson plugins "$PLUGINS_JSON" '
-    (if ((.hooks.SessionStart // []) | any(.hooks[]?.command == $cmd)) then .
-     else
+jq --arg cmd "$HOOK_COMMAND" '
+    if ((.hooks.SessionStart // []) | any(.hooks[]?.command == $cmd)) then .
+    else
         .hooks //= {} |
         .hooks.SessionStart //= [] |
         .hooks.SessionStart += [
             { matcher: "startup|resume", hooks: [ { type: "command", command: $cmd } ] }
         ]
-     end)
-    | if $declare == 1 then
-        .extraKnownMarketplaces //= {} |
-        .extraKnownMarketplaces[$mp] //= { source: { source: "git", url: $url } } |
-        .enabledPlugins //= {} |
-        # //= は false も未設定と同じに扱い、ユーザーが止めた plugin を戻してしまう
-        reduce $plugins[] as $p (.;
-            if (.enabledPlugins | has("\($p)@\($mp)")) then . else .enabledPlugins["\($p)@\($mp)"] = true end)
-      else . end
+    end
 ' "$SETTINGS" > "$TMP"
 
 if cmp -s "$TMP" "$SETTINGS"; then
@@ -131,7 +113,7 @@ if cmp -s "$TMP" "$SETTINGS"; then
     log "既存: $SETTINGS は設定済みです（変更なし）"
 else
     mv "$TMP" "$SETTINGS"
-    log "更新: $SETTINGS に SessionStart hook / plugin 宣言をマージ"
+    log "更新: $SETTINGS に SessionStart hook をマージ"
 fi
 
 # === 4. Setup script テンプレートを表示 ===
@@ -141,8 +123,8 @@ cat "$SKILL_DIR/assets/setup-script-template.sh"
 echo "----------------------------------------"
 
 RECOMMEND=()
-[ "$HAS_PLAYWRIGHT" = 1 ] && RECOMMEND+=("Playwright のブロックを有効化し、環境の Network access を Custom にして配布元を追加してください（@playwright/test を検出）")
-[ "$HAS_COMPOSE" = 1 ] && RECOMMEND+=("docker pull のブロックを有効化してください（docker-compose.yml/compose.yml を検出）")
+[ "$HAS_PLAYWRIGHT" = 1 ] && RECOMMEND+=("Playwright: プリインストールのブラウザと @playwright/test の要求版がずれるので、セッション初期化で npx playwright install を実行してください（@playwright/test を検出）")
+[ "$HAS_COMPOSE" = 1 ] && RECOMMEND+=("docker compose: Allowed domains に production.cloudfront.docker.com を足し、docker pull のブロックを有効化してください。ビルドでパッケージを取得するならプロキシ CA を渡す必要があります（注意事項を参照）")
 if [ "${#RECOMMEND[@]}" -gt 0 ]; then
     log "このリポジトリ向けの推奨:"
     for r in "${RECOMMEND[@]}"; do
