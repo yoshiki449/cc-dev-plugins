@@ -165,11 +165,19 @@ cwd のリポジトリを見ても push される中身とは別物になる。2
 bash plugins/git-secret-guard/scripts/publish-scan.sh --force --all
 ```
 
-**PR は rebase マージにする。** squash マージとマージコミットは GitHub がコミットを作り直し、著者に
-アカウントのメールアドレスを入れる。GitHub 上で作られるコミットは push 前の走査を通らないので、
-手元のコミットを noreply にしていても公開 main に実在のアドレスが載る（実測: squash マージした PR で
-1件載り、履歴を書き換えても PR から SHA で参照できるため取り消せなかった）。rebase マージは元の著者を保つ。
-マージ後に `publish-scan.sh --force --all` で commit-meta に検出が無いことを確かめる。
+**PR を GitHub の画面や API でマージしない。手元から fast-forward で main に push する。**
+squash・rebase・マージコミットのどれでも GitHub がコミットを作り直し、アカウントのメールアドレスを入れる
+（squash とマージコミットは著者に、rebase は著者を保つがコミッターに入る）。GitHub 上で作られるコミットは
+push 前の走査を通らないので、手元のコミットを noreply にしていても公開 main に実在のアドレスが載る
+（実測: squash で著者に1件、rebase でコミッターに2件載った。main を書き換えても PR から SHA で参照できる）。
+
+```bash
+git fetch origin && git rebase origin/main        # main が進んでいたら先に載せ直す
+git push origin HEAD:main                         # fast-forward なので GitHub はコミットを作り直さない
+```
+
+push 後に `git log origin/main --format='%h %ae %ce' -5` で著者とコミッターが noreply であることを確かめる。
+PR は push で main に取り込まれた時点で GitHub が自動でマージ済みにする。
 
 ## やってはいけないこと
 
