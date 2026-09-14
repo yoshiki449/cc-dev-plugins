@@ -73,10 +73,34 @@ function readLastCallArg(src, openIdx) {
   throw new Error(`閉じ括弧が見つからない（offset ${openIdx}）`);
 }
 
+// opts のトップレベルだけを残す（文字列・入れ子・コメントを落とす）。プロンプト由来の文字列や
+// 入れ子のオブジェクトに `agentType:` が現れても、それを opts のキーと取り違えないため。
+function topLevelOf(opts) {
+  let out = '';
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < opts.length; i++) {
+    const ch = opts[i];
+    if (quote) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '/' && opts[i + 1] === '/') { i = opts.indexOf('\n', i); if (i < 0) break; continue; }
+    if (ch === '/' && opts[i + 1] === '*') { i = opts.indexOf('*/', i) + 1; if (i <= 0) break; continue; }
+    if (ch === '`' || ch === "'" || ch === '"') { quote = ch; continue; }
+    if ('({['.includes(ch)) { depth++; continue; }
+    if (')}]'.includes(ch)) { depth--; continue; }
+    if (depth === 1) out += ch;
+  }
+  return out;
+}
+
 function extractCalls(file) {
   const src = read(path.join(WORKFLOWS_DIR, file));
   const calls = [];
-  const re = /\b(agent|schemaAgent)\(/g;
+  // 識別子と括弧の間の空白も許す。拾えない書き方があると、その呼び出しは分類検査を無音ですり抜ける
+  const re = /\b(agent|schemaAgent)\s*\(/g;
   let m;
   while ((m = re.exec(src)) !== null) {
     const before = src.slice(Math.max(0, m.index - 20), m.index);
@@ -91,6 +115,7 @@ function extractCalls(file) {
     calls.push({
       line,
       opts,
+      top: topLevelOf(opts),
       label: labelMatch ? labelMatch[2].replace(/\$\{[^}]*\}/g, '*') : null,
     });
   }
@@ -109,12 +134,12 @@ for (const file of WORKFLOWS) {
       const where = `${file}:${c.line} label=${c.label}`;
       assert.ok(c.opts.startsWith('{'), `${where}: opts オブジェクトが最後の引数に無い`);
       assert.ok(c.label, `${where}: label が無い。分類できないので label を付ける`);
-      if (/\bagentType:/.test(c.opts)) continue;
+      if (/\bagentType\s*:/.test(c.top)) continue;
       if (JUDGMENT_LABELS.has(c.label)) {
-        assert.doesNotMatch(c.opts, /\bmodel:/, `${where}: 判断役にモデルが指定されている`);
+        assert.doesNotMatch(c.opts, /\bmodel\s*:/, `${where}: 判断役にモデルが指定されている`);
         continue;
       }
-      assert.match(c.opts, /\bmodel: CHORE_MODEL\b/, `${where}: 雑務なのに model: CHORE_MODEL が無い（メインの Opus で走る）`);
+      assert.match(c.top, /\bmodel:\s*CHORE_MODEL\b/, `${where}: 雑務なのに model: CHORE_MODEL が無い（メインの Opus で走る）`);
     }
   });
 
@@ -144,6 +169,12 @@ test('生成役を検証・監督する agent はメインのモデルを引き�
   // 同じ盲点を共有する（adversarial-verifier と loop-supervisor はそれを破るための役）
   assert.equal(frontmatterModel('adversarial-verifier'), 'inherit');
   assert.equal(frontmatterModel('loop-supervisor'), 'inherit');
+});
+
+test('設計書を書く agent はメインのモデルを引き継ぐ', () => {
+  // REQUIREMENTS.md / DESIGN.md の質が後段の自律ループ全体を決めるので、雑務と同じ扱いにしない
+  assert.equal(frontmatterModel('designer'), 'inherit');
+  assert.equal(frontmatterModel('spec-writer'), 'inherit');
 });
 
 test('auto-build / auto-feedback の supervisor_model の例が生成役と同じモデルを勧めていない', () => {
