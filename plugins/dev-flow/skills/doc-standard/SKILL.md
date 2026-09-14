@@ -1,6 +1,6 @@
 ---
 name: doc-standard
-description: ドキュメント保管規約（docs/ はレビュー文書で git 管理、docs/plans/ は採用プラン、.agent/ は全面 gitignore、ルート直下はツール規定ファイルのみ）への準拠チェックと一括移行を行う。対象は1リポジトリ・指定ディレクトリ・ホーム配下一括のいずれかで、コミットはしない。ユーザーが「ドキュメント規約に準拠させて」「docs/ に移行して」「.agent を gitignore にして」「ドキュメントの置き場所を整理して」「doc-standard を実行して」「保管規約チェックして」と言ったら必ず使う。
+description: ドキュメント保管規約（docs/ はレビュー文書で git 管理、docs/plans/ は採用プラン、.agent/ は既定で全部 gitignore（allowlist の例外のみ追跡可）、ルート直下はツール規定ファイルのみ）への準拠チェックと一括移行を行う。対象は1リポジトリ・指定ディレクトリ・ホーム配下一括のいずれかで、コミットはしない。ユーザーが「ドキュメント規約に準拠させて」「docs/ に移行して」「.agent を gitignore にして」「ドキュメントの置き場所を整理して」「doc-standard を実行して」「保管規約チェックして」と言ったら必ず使う。
 ---
 
 # /doc-standard — ドキュメント保管規約への一括移行
@@ -16,16 +16,24 @@ description: ドキュメント保管規約（docs/ はレビュー文書で git
 | ルート直下 | ツールが配置場所を規定する md のみ（README / CLAUDE / AGENTS / GEMINI / LICENSE / CONTRIBUTING / CHANGELOG / CODE_OF_CONDUCT / SECURITY） | tracked |
 | `docs/` | レビュー対象の設計文書（REQUIREMENTS / DESIGN / SPEC / OPERATIONS / RUNBOOK） | **tracked** |
 | `docs/plans/` | 採用した Plan mode プラン（`YYYY-MM-DD-<トピック>.md`） | **tracked** |
-| `.agent/` | エージェント運用ファイル（handover / evidence / autopilot / explanations 等） | **全面 gitignore** |
+| `.agent/` | エージェント運用ファイル（handover / evidence / autopilot / explanations 等） | **既定で全部 gitignore**（`.agent/` の1行、または `.agent/*` ＋ `!` 例外の allowlist） |
 | `.agent/reports/` | サマリレポート（qa-report / security-review / security-check / triage）。dev-hub の 🧾 レポート表示対象 | gitignore |
+
+**allowlist 形式**: クラウドセッションのように clone したリポジトリだけで作業する環境へ、長期の知見（`knowledge.md` など）を届けたいときに使う。部分除外（`.agent/handover-*.md` のような denylist）は新しいファイルが除外漏れで混入し続けるので引き続き不可。`.agent/*` で既定除外にしてから、残すファイルだけを `!.agent/<file>` で戻す。`.agent/` の1行と併記すると、ディレクトリごと除外されて `!` の例外が効かない。
+
+```gitignore
+.agent/*
+!.agent/knowledge.md
+!.agent/architecture.md
+```
 
 スクリプトが自動で行うこと（すべて idempotent）：
 
 1. ルート直下の設計系 md（`REQUIREMENTS*.md` / `DESIGN*.md` / `SPEC*.md` / `OPERATIONS.md` / `RUNBOOK.md`）を `docs/` へ移動（tracked なら `git mv`。隣接する `<名前>.md.comments.json` も一緒に移動）
 2. ルート直下の `HANDOVER*.md` を `.agent/` へ移動（index からも外す）
 3. `.agent/` 直下の旧形式レポート（`qa-report-*` / `security-review-*` / `security-check-*` / `triage-*`）を `.agent/reports/` へ移送（gitignore 内の fs 移動のみ）
-4. `.gitignore` に `.agent/` を追記（`handover-*.md` のような部分除外しかない場合も全面行を追加）
-5. tracked になっている `.agent/` 配下を `git rm -r --cached` で index から削除（ローカルファイルは残る）
+4. `.gitignore` に `.agent/` を追記（`handover-*.md` のような部分除外しかない場合も全面行を追加。`.agent/*` の allowlist 形式なら何もしない）
+5. tracked になっている `.agent/` 配下のうち、`.gitignore` で除外されるものを `git rm --cached` で index から削除（ローカルファイルは残る。allowlist の例外は残す）
 6. 判断できない md は `[MANUAL]`、移動ファイルへの参照が残る md は `[LINK]` として**報告のみ**
 
 **コミットは行わない**。適用後の変更はリポジトリごとに人間または Claude がレビューしてコミットする。
