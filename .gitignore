@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# 実値の設定ファイル。plugin は ~/.cc-plugins/.env を読むので、リポジトリ内に実値は置かない
+.env
+.env.*
+# テンプレートだけは追跡する。`.env.*` に食われて配布されないと、
+# 設定キーの存在自体が誰にも伝わらない（値は入れないこと）
+!.env.example
+
+# 作業ディレクトリ（全面除外）
+.agent/
+.poc/
+.claude/worktrees/
+
+# Playwright MCP の一時ログ
+.playwright-mcp/
+
+# fixture の依存とテスト出力
+node_modules/
+playwright-report/
+test-results/

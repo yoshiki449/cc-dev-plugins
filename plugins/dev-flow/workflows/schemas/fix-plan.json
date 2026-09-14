@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FixPlan",
+  "description": "Fix-loop / feedback ループの修正方針。各項目に明示的な実装ステップを含める。",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "approach", "files_to_change", "test_impact"],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "description": "元の指摘 ID（FB1 / QA1 / E2E-fail-1 等）"
+          },
+          "approach": { "type": "string", "description": "修正方針の1〜3文" },
+          "files_to_change": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "test_impact": {
+            "type": "object",
+            "properties": {
+              "tests_to_add": { "type": "array", "items": { "type": "string" } },
+              "tests_to_update": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "rollback_strategy": {
+            "type": "string",
+            "description": "副作用が大きい場合の戻し手順"
+          }
+        }
+      }
+    }
+  }
+}

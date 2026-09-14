@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TODO 管理</title>
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; }
+    form { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    input[type="text"] { flex: 1; padding: 0.5rem; }
+    button { padding: 0.5rem 1rem; cursor: pointer; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 0.5rem; border-bottom: 1px solid #ddd; }
+    li.completed { text-decoration: line-through; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>TODO 管理</h1>
+  <form id="todo-form">
+    <input type="text" id="todo-title" placeholder="やることを入力" required />
+    <button type="submit">追加</button>
+  </form>
+  <ul id="todo-list"></ul>
+
+  <script>
+    async function loadTodos() {
+      const res = await fetch('/api/todos')
+      const todos = await res.json()
+      const list = document.getElementById('todo-list')
+      list.innerHTML = ''
+      for (const todo of todos) {
+        const li = document.createElement('li')
+        li.textContent = todo.title
+        li.dataset.id = todo.id
+        if (todo.completed) li.classList.add('completed')
+        list.appendChild(li)
+      }
+    }
+
+    document.getElementById('todo-form').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const input = document.getElementById('todo-title')
+      await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      })
+      input.value = ''
+      await loadTodos()
+    })
+
+    loadTodos()
+  </script>
+</body>
+</html>

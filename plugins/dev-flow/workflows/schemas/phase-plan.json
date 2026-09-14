@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PhasePlan",
+  "description": "DESIGN.md から導出される Phase 分割計画。Workflow build.workflow.js の Plan phase の出力。",
+  "type": "object",
+  "required": ["list", "rationale"],
+  "properties": {
+    "list": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "files", "depends_on"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^P[0-9]+$" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "files": {
+            "type": "array",
+            "description": "この Phase で触る予定のファイルパス（相対）",
+            "items": { "type": "string" }
+          },
+          "depends_on": {
+            "type": "array",
+            "description": "事前に完了している必要のある Phase ID",
+            "items": { "type": "string", "pattern": "^P[0-9]+$" }
+          },
+          "test_strategy": {
+            "type": "string",
+            "enum": ["unit-only", "unit+integration", "unit+e2e"],
+            "default": "unit-only"
+          }
+        }
+      }
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Phase 分割の理由（依存関係・コンテキストサイズ等）"
+    }
+  }
+}

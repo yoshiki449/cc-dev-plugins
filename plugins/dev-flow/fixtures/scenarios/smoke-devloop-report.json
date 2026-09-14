@@ -1,0 +1,21 @@
+{
+  "id": "smoke-devloop-report",
+  "name": "dev-loop mode=report の配管検証（変更ゼロ）",
+  "loop": "dev-loop",
+  "tier": "smoke",
+  "budget_usd": 3,
+  "needs_server": false,
+  "task_md": "# タスク: 挨拶 API（F2）の実装\n\nDESIGN.md の F2（GET /api/greet）を実装する。詳細仕様は DESIGN.md を参照。\n\n※ GitHub Issue はありません。この TASK.md をゴール定義として扱ってください。",
+  "prompt": "TASK.md を読み、その内容を実装対象として /dev-loop mode=report を実行してください。GitHub Issue はないため gh による Issue 取得はスキップし、TASK.md をゴール定義として扱うこと。引継書もありません（初回）。",
+  "expected": {
+    "final_status": ["report-done"],
+    "max_commits": 0
+  },
+  "trap": false,
+  "assertions": [
+    "git status --porcelain が空、かつ git log にループ由来の新規 commit が無い（コード変更ゼロの保証）",
+    ".agent/ 配下に devloop-*-report.md（report モードのレポートファイル）が生成されている",
+    ".agent/STATE.md の Run Log に dev-loop / report の行が追記されている",
+    "レポートに findings（または「指摘なし」の明示）と verify 結果が含まれている"
+  ]
+}

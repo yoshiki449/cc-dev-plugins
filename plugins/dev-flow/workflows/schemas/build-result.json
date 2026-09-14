@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BuildResult",
+  "description": "implementer エージェントが Phase 単位で実装した結果。",
+  "type": "object",
+  "required": ["phase_id", "status", "files_changed", "commit_sha", "src_files_created"],
+  "properties": {
+    "phase_id": { "type": "string", "pattern": "^P[0-9]+$" },
+    "status": { "type": "string", "enum": ["success", "partial", "failed"] },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "change_type"],
+        "properties": {
+          "path": { "type": "string" },
+          "change_type": { "type": "string", "enum": ["added", "modified", "deleted"] },
+          "lines_added": { "type": "integer", "minimum": 0 },
+          "lines_deleted": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "commit_sha": { "type": "string", "description": "実装コミットの SHA" },
+    "src_files_created": {
+      "type": "array",
+      "description": "作成・変更した実装ソースファイル（Issue #2 P2: テスト・設定のみで済ませる逃避の防止。設定のみの Phase はそのパスを入れる）",
+      "items": { "type": "string" }
+    },
+    "notes": { "type": "string", "description": "実装上の判断・YAGNI で除外した観点等" }
+  }
+}

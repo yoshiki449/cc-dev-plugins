@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UnitReport",
+  "description": "ユニットテスト試走と Phase 単位の総合判定。",
+  "type": "object",
+  "required": ["phase_id", "test_result", "lint_status", "decision"],
+  "properties": {
+    "phase_id": { "type": "string" },
+    "test_result": { "$ref": "test-result.json" },
+    "lint_status": { "type": "string", "enum": ["clean", "warnings", "errors", "not-run"] },
+    "lint_messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "message"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "rule": { "type": "string" },
+          "message": { "type": "string" },
+          "severity": { "type": "string", "enum": ["error", "warning", "info"] }
+        }
+      }
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["proceed", "fix-required", "abort"],
+      "description": "proceed = 次 Phase へ / fix-required = Fix-loop へ / abort = 続行不可"
+    },
+    "issues_for_fix_loop": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "severity", "target"],
+        "properties": {
+          "title": { "type": "string" },
+          "severity": { "type": "string", "enum": ["Critical", "Major", "Minor"] },
+          "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "target": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    }
+  }
+}

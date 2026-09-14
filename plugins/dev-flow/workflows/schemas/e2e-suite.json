@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "E2ESuite",
+  "description": "e2e-test-generator が生成した E2E テストスイートの目録。",
+  "type": "object",
+  "required": ["spec_paths", "user_stories", "functional"],
+  "properties": {
+    "spec_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "生成された全 spec ファイルの相対パス"
+    },
+    "user_stories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["story_id", "file", "test_count"],
+        "properties": {
+          "story_id": { "type": "string" },
+          "file": { "type": "string" },
+          "test_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "functional": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "file", "test_count"],
+        "properties": {
+          "category": { "type": "string" },
+          "file": { "type": "string" },
+          "test_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "playwright_config_changes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "playwright.config.ts に追加・変更した設定（video: 'on' 等）"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VideoIndex",
+  "description": "Collect-Review-Assets phase で集約した動画ファイルの目録。",
+  "type": "object",
+  "required": ["source", "videos"],
+  "properties": {
+    "source": { "type": "string", "enum": ["e2e", "qa"] },
+    "total_size_bytes": { "type": "integer", "minimum": 0 },
+    "videos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["src_path", "dest_path", "label"],
+        "properties": {
+          "src_path": { "type": "string", "description": "コピー元（e2e/test-results/... or .agent/evidence/...）" },
+          "dest_path": { "type": "string", "description": ".agent/autopilot/<task>/review/videos/ 配下" },
+          "label": { "type": "string", "description": "テスト名 or ゴール説明" },
+          "duration_sec": { "type": "number" },
+          "size_bytes": { "type": "integer" },
+          "thumbnail_path": { "type": "string", "description": "サムネ画像（生成すれば）" }
+        }
+      }
+    }
+  }
+}

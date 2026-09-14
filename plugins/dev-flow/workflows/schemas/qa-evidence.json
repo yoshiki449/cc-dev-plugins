@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QAEvidence",
+  "description": "qa-explorer が収集した証跡の目録。動画・スクリーンショット・ログのパス一覧。",
+  "type": "object",
+  "required": ["base_dir", "exploration_log", "videos"],
+  "properties": {
+    "base_dir": { "type": "string", "description": ".agent/evidence/<task>/qa/" },
+    "exploration_log": { "type": "string", "description": "exploration-log.md のパス" },
+    "console_messages": { "type": "string" },
+    "network_requests": { "type": "string" },
+    "screenshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "step", "goal_id"],
+        "properties": {
+          "path": { "type": "string" },
+          "step": { "type": "string" },
+          "goal_id": { "type": "string" }
+        }
+      }
+    },
+    "videos": {
+      "type": "array",
+      "description": "1ゴール1動画。録画不可環境では空配列",
+      "items": {
+        "type": "object",
+        "required": ["path", "goal_id", "duration_sec"],
+        "properties": {
+          "path": { "type": "string", "description": ".agent/evidence/<task>/qa/videos/G<番号>-<説明>.webm" },
+          "goal_id": { "type": "string" },
+          "duration_sec": { "type": "number" },
+          "size_bytes": { "type": "integer" }
+        }
+      }
+    },
+    "recording_available": {
+      "type": "boolean",
+      "description": "Playwright MCP の --caps=devtools が有効か"
+    }
+  }
+}

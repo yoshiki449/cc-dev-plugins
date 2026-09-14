@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QAFinding",
+  "description": "qa-goal-evaluator / qa-technical-evaluator / qa-ux-evaluator の所見。信頼度必須。",
+  "type": "object",
+  "required": ["evaluator", "findings", "summary"],
+  "properties": {
+    "evaluator": {
+      "type": "string",
+      "enum": ["qa-goal-evaluator", "qa-technical-evaluator", "qa-ux-evaluator"]
+    },
+    "summary": {
+      "type": "object",
+      "required": ["critical", "major", "minor"],
+      "properties": {
+        "critical": { "type": "integer", "minimum": 0 },
+        "major": { "type": "integer", "minimum": 0 },
+        "minor": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "severity", "confidence", "evidence_ref", "recommendation"],
+        "properties": {
+          "title": { "type": "string" },
+          "severity": { "type": "string", "enum": ["Critical", "Major", "Minor"] },
+          "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "lens": { "type": "string", "description": "観点（ゴール到達／導線／技術エラー／UX 等）" },
+          "evidence_ref": {
+            "type": "object",
+            "description": "証跡へのリンク",
+            "properties": {
+              "screenshot": { "type": "string" },
+              "video": { "type": "string" },
+              "log_excerpt": { "type": "string" }
+            }
+          },
+          "recommendation": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TestResult",
+  "description": "テスト実行結果。test-writer / e2e-test-generator / 実行系エージェントの共通スキーマ。",
+  "type": "object",
+  "required": ["status", "passed", "failed", "total"],
+  "properties": {
+    "status": { "type": "string", "enum": ["all-pass", "some-fail", "all-fail", "error"] },
+    "passed": { "type": "integer", "minimum": 0 },
+    "failed": { "type": "integer", "minimum": 0 },
+    "skipped": { "type": "integer", "minimum": 0 },
+    "total": { "type": "integer", "minimum": 0 },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "failure_details": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["test_name", "message"],
+        "properties": {
+          "test_name": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "message": { "type": "string" },
+          "stack": { "type": "string" }
+        }
+      }
+    },
+    "spec_paths": {
+      "type": "array",
+      "description": "対象テストファイルのパス",
+      "items": { "type": "string" }
+    },
+    "test_command": {
+      "type": "string",
+      "description": "実行したコマンド（例: npm test）"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "PreToolUse(Bash) で `git push` を捕捉して2本スキャンする。1本目は秘密の値（secret-scan.sh）、2本目は公開してはいけない固有名（publish-scan.sh、[public-repos] に載っている remote のときだけ）。どちらかが検出したら実行をブロック。絞り込みは登録側の条件ではなくスクリプト本体で行う（理由は下）。",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-bash-push-check.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

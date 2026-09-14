@@ -1,0 +1,29 @@
+{
+  "name": "cc-dev-plugins",
+  "owner": {
+    "name": "yoshiki449"
+  },
+  "description": "Claude Code の開発フロー plugin marketplace。/dev ルーターから plan → setup → implement → verify → qa → ship を回す dev-flow、PoC 専用の軽量フロー poc-flow、marketplace 自身の管理 cc-meta、push 直前の走査 git-secret-guard。組織固有の品質基準は同梱せず overlay として外から差し込む。",
+  "plugins": [
+    {
+      "name": "dev-flow",
+      "source": "./plugins/dev-flow",
+      "description": "新機能開発フロー総合パッケージ。/dev ルーター＋フェーズ別スキル（dev-*）＋中間層 dev-loop（implement↔self-review↔verify の半自律ループ）＋自律ループ系スキル（auto-*）＋変更理解ドキュメント生成 explain-diff（背景→直感→コード解説→理解度クイズの4部構成 HTML、v0.12.0〜）＋関連 agents / workflows / hooks / templates を内包。旧 claude-harness-kit / claude-autopilot-kit を統合。 v0.13.0 でドキュメント保管規約の一括移行スキル doc-standard を追加（docs/ 移動・.agent/ 全面 gitignore・idempotent・dry-run。dev-hub 構想 #12 Phase 0）。 v0.15.0 で成果物ハブ dev-hub（実行履歴ビュー＋動画＋設計md＋プラン＋explain-diff の横断ビューア、dev-videos 後継）を追加。 v0.16.0 で dev-hub にコメント機能（md/HTML 範囲選択・動画フレームコメント → mce 互換 JSON／Claude 向けプロンプトコピー）を統合。 v0.18.0 で dev-hub コメント→/auto-feedback 連携（📮 feedback-inbox 書き出し → /auto-feedback --inbox 取り込み。#12 Phase 3）を追加。 v0.19.0 で dev-hub モーダルの最大化トグル（#16）を追加。 v0.24.0 で explain-diff 生成を ship 前レビューに前倒し（verify/qa 末尾で生成・ship は再利用。#20）。 v0.27.0 で Fable Field Guide 由来の6改善（DESIGN §0 レビュー判断・ブラインドスポットパス・Deviations 常設ログ・複数方向モック→dev-hub 還流・S1 質問優先＋習熟度・参照実装調査。#22）を追加。 v0.28.0 で同6改善を dev-*/auto-* 両フローに完全網羅（Issue 判断セクション・dev-plan 質問優先＋習熟度・単発 Deviations・auto-design D0.5 複数方向モック。#23）。 v0.40.0 で dev-plan の未確定事項が保留のまま次フェーズへ流れる欠陥を修正（A6 に「未確定事項のクローズ」を必須ステップ化＝今決める／調査に戻す／承認済み保留の3択で1件ずつ AskUserQuestion、issue-template・引継書に「未解決事項（承認済み保留）」セクション新設、A7 に投稿前の禁止語チェック。#37）。"
+    },
+    {
+      "name": "cc-meta",
+      "source": "./plugins/cc-meta",
+      "description": "cc-plugins marketplace 自身の管理ツール（/promote-check /promote-skill /mark-keep）"
+    },
+    {
+      "name": "git-secret-guard",
+      "source": "./plugins/git-secret-guard",
+      "description": "Claude Code の git push 直前にシークレット混入をスキャンしてブロック"
+    },
+    {
+      "name": "poc-flow",
+      "source": "./plugins/poc-flow",
+      "description": "PoC 専用の軽量開発フロー。品質ゲートをブラウザ実機スモーク1本に集約し、自動テスト・コードレビューを行わない。/poc → /poc-build → /poc-smoke → /poc-ship の4スキル＋初見ユーザーとして自律探索する poc-smoke-explorer。dev-flow の hook 干渉を避けるため成果物は .poc/ 配下に置き .agent/ を作らない。本採用に進む時点で /dev に合流する（卒業パス）。"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReviewIndex",
+  "description": "人間レビュー向けの統合インデックス。review-video-index.md を生成するための構造化データ。",
+  "type": "object",
+  "required": ["task_id", "review_dir", "summary", "videos", "pr_url"],
+  "properties": {
+    "task_id": { "type": "string" },
+    "review_dir": { "type": "string", "description": ".agent/autopilot/<task>/review/" },
+    "summary": {
+      "type": "object",
+      "required": ["total_attempts", "final_status"],
+      "properties": {
+        "total_attempts": { "type": "integer", "minimum": 1 },
+        "final_status": {
+          "type": "string",
+          "enum": ["all-green", "partial-green", "halted-budget", "halted-attempts", "halted-error"]
+        },
+        "unit_pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "e2e_pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "qa_critical_count": { "type": "integer", "minimum": 0 },
+        "qa_major_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "videos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "category", "path", "recommended_speed"],
+        "properties": {
+          "label": { "type": "string" },
+          "category": { "type": "string", "enum": ["e2e", "qa-goal", "qa-error", "qa-ux"] },
+          "path": { "type": "string", "description": "review_dir 相対パス" },
+          "duration_sec": { "type": "number" },
+          "recommended_speed": {
+            "type": "string",
+            "enum": ["0.5x", "1.0x", "1.5x"],
+            "default": "0.5x"
+          },
+          "related_finding_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "release_asset_url": {
+      "type": "string",
+      "description": "GitHub Release Assets にアップロードした review-videos.zip の URL（あれば）"
+    },
+    "pr_url": { "type": "string" }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "poc-flow",
+  "description": "PoC（試作・実現性検証）専用の軽量開発フロー。品質ゲートを「ブラウザ実機スモーク」1本に集約し、自動テストとコードレビューを行わない。/poc（起点）→ /poc-build（実装＋スモークループ）→ /poc-smoke（スモーク単体）→ /poc-ship（PR作成のみ）の4スキルと、初見ユーザーとして画面を自律探索する poc-smoke-explorer で構成する。dev-flow の hook 干渉を避けるため成果物は .poc/ 配下に置き、.agent/ を作らない。",
+  "version": "0.1.1"
+}

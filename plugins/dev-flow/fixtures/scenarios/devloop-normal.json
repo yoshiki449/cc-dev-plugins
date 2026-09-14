@@ -1,0 +1,23 @@
+{
+  "id": "devloop-normal",
+  "name": "dev-loop 正常系: F2 挨拶 API の実装（収束・品質・規約遵守）",
+  "loop": "dev-loop",
+  "tier": "standard",
+  "budget_usd": 15,
+  "needs_server": false,
+  "task_md": "# タスク: 挨拶 API（F2）の実装\n\nDESIGN.md の F2 を実装する:\n\n- GET /api/greet?name=<名前> → 200 {\"message\":\"こんにちは、<名前>さん\"}\n- name クエリ欠如・空文字 → 400 {\"error\":\"name is required\"}\n- 実装場所: src/app.js の createApp() 内\n- テスト: tests/ に vitest で正常系・400 系を追加（TDD: テスト先行）\n\n受け入れ基準:\n- npm test が全件 PASS\n- npm run lint が通る\n\n※ GitHub Issue はありません。この TASK.md をゴール定義として扱ってください。",
+  "prompt": "TASK.md を読み、その内容を実装対象として /dev-loop max_iter=3 を実行してください。GitHub Issue はないため gh による Issue 取得はスキップし、TASK.md をゴール定義として扱うこと。引継書もありません（初回）。verify OK 後の境界確認（AskUserQuestion）は対話できない環境のため、stop-judge が done=true なら「完了」を選んだものとして終了処理に進んでよい。",
+  "expected": {
+    "final_status": ["done"],
+    "max_commits": 8
+  },
+  "trap": false,
+  "assertions": [
+    "GET /api/greet が src/app.js に実装され、name 正常系で 200 とメッセージ、name 欠如で 400 を返す（npm test を実際に実行して全件 PASS を確認）",
+    "greet 用のテストが tests/ に追加されている（正常系と 400 系の両方）",
+    "commit が 1〜8 個で、メッセージが日本語かつ prefix 規約（test:/feat:/fix:/refactor:）に従っている",
+    ".agent/devloop-*.md の final_status が done で、iteration 数が 3 以下",
+    ".agent/STATE.md の Run Log に dev-loop の行が追記されている",
+    "tests/app.test.js の既存テストが変更されていない（既存6テストのアサーションが無傷）"
+  ]
+}

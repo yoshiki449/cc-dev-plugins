@@ -1,0 +1,21 @@
+{
+  "id": "smoke-autobuild-report",
+  "name": "auto-build report_only の配管検証（Plan まで・実装ゼロ）",
+  "loop": "auto-build",
+  "tier": "smoke",
+  "budget_usd": 6,
+  "needs_server": false,
+  "task_md": "# タスク: DESIGN.md の未実装機能（F2 挨拶 API・F3 統計機能）の自律実装\n\n※ この run は report_only の試走。実装は行わない。",
+  "prompt": "/auto-build を report_only: true で実行してください。REQUIREMENTS.md と DESIGN.md は確定済み（このリポジトリ直下）。dev_url は http://localhost:3987、認証は不要（auth なし）。issue_number は null。create_pr は false。Playwright MCP は不要（report_only のため）。ユーザーへの追加確認はせず、既定値で起動すること。",
+  "expected": {
+    "final_status": ["report-only"],
+    "max_commits": 0
+  },
+  "trap": false,
+  "assertions": [
+    "git log にループ由来の新規 commit が無い（実装ゼロ）",
+    ".agent/autopilot/*/report-only.md が生成され、Phase 計画と概算コストが記載されている",
+    "final_status が report-only として報告されている",
+    "PR が作成されていない"
+  ]
+}

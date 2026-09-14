@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FeedbackItems",
+  "description": "feedback-interpreter が自然言語コメントを分解した結果。",
+  "type": "object",
+  "required": ["original", "items"],
+  "properties": {
+    "original": { "type": "string", "description": "ユーザーの生コメント" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "intent", "target_hint", "priority"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^FB[0-9]+$" },
+          "category": {
+            "type": "string",
+            "enum": ["bug", "ui-improvement", "spec-mismatch", "spec-addition", "performance", "a11y", "security"]
+          },
+          "intent": { "type": "string", "description": "ユーザーが望む変更内容を1〜2文で要約" },
+          "target_hint": {
+            "type": "string",
+            "description": "関係しそうなファイル・画面・機能（推定）"
+          },
+          "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+          "needs_clarification": {
+            "type": "boolean",
+            "description": "判断不能で追加質問が必要な場合 true（Workflow 内では false 前提、true なら完了時にレポート）"
+          }
+        }
+      }
+    }
+  }
+}

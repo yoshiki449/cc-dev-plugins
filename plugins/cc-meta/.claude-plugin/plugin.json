@@ -1,0 +1,5 @@
+{
+  "name": "cc-meta",
+  "description": "cc-plugins marketplace 自身の管理ツール。ローカル ~/.claude/skills/ と cc-plugins 配下の整合性チェックと、スキルの移植・ローカル保持マーカー管理を行う。skill-creator で新規スキルを作成した直後の「忘れる」を防ぐための補助。 v0.2.0 で marketplace 2本構成に対応（cc-dev-plugins#1）。移植先リポジトリは ~/.cc-plugins/.env の CC_DEV_PLUGINS_DIR / CC_PLUGINS_DIR から解決し、手順書に絶対パスを書かない。既定値は持たず、未設定なら exit 2 で止まる（推測で選ぶと業務固有のスキルが公開リポジトリへ入る）。/promote-check は両方の marketplace を渡して走らせる（片方だけだと、もう片方へ移植済みのスキルが「未判定」として出続ける）。",
+  "version": "0.2.0"
+}

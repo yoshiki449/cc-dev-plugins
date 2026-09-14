@@ -1,0 +1,29 @@
+# loop-denylist.txt — 自動編集禁止パス（dev-flow denylist、単一ソース）
+# 1行1パターン。「#」で始まる行と空行は無視。
+#
+# マッチ規則（pre-edit-protect.sh / workflow 照合 / 各エージェントが共通で使う）:
+#   - パターンに「/」を含まない場合: ファイル名（basename）との glob マッチ（例: .env* → .env.local に一致）
+#   - パターンに「/」を含む場合: プロジェクト相対パスとの glob マッチ（** は任意階層）
+# 常時許可の例外（hook 側で固定）: .env.example / env.dev*
+#
+# ここに載せたパスは、自律ループ中もループ外の通常セッションでも
+# Claude の Edit/Write が hook でブロックされる。編集が必要なときは人間が手で行うか、
+# 該当行をコメントアウトしてから作業し、終わったら戻すこと。
+
+# 環境変数・シークレット
+.env*
+*credential*
+*.pem
+*.key
+
+# DB マイグレーション（適用済みファイルの書き換えは環境を壊す）
+**/migrations/**
+
+# インフラ定義（使うプロジェクトではコメントアウトを外す）
+# terraform/**
+# k8s/**
+# .github/workflows/**
+
+# 認証・決済まわり（プロジェクトに合わせて記入する）
+# src/auth/**
+# src/payments/**

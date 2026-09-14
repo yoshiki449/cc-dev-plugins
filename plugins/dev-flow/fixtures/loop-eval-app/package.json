@@ -1,0 +1,21 @@
+{
+  "name": "loop-eval-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "dev-flow /loop-eval 用の fixture アプリ（TODO 管理の最小 Web アプリ）",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "node --check src/app.js && node --check src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "supertest": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<title>dev-hub — 開発成果物ハブ</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>dev-hub</h1>
+  <div class="topbar-actions">
+    <input id="search" type="search" placeholder="タイトル / プロジェクト / パスで絞り込み" />
+    <div id="type-filters" class="type-filters"></div>
+    <button id="expand-all" type="button" class="ghost">すべて展開</button>
+    <button id="collapse-all" type="button" class="ghost">すべて折りたたみ</button>
+    <button id="rescan" type="button">再スキャン</button>
+    <span id="status" class="status"></span>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <h2>プロジェクト</h2>
+    <ul id="projects"></ul>
+  </aside>
+
+  <section class="content">
+    <div id="list" class="video-list"></div>
+  </section>
+</main>
+
+<div id="doc-overlay" class="player-overlay hidden" role="dialog" aria-modal="true" aria-label="ドキュメントビューア">
+  <div class="player-modal doc-modal">
+    <div class="player-header">
+      <div class="player-header-text">
+        <div id="doc-title" class="player-title"></div>
+        <div id="doc-meta" class="player-meta"></div>
+      </div>
+      <button id="doc-maximize" type="button" class="maximize-btn" aria-label="最大化" aria-pressed="false" title="画面いっぱいに表示（再度押すと元に戻す）">⛶</button>
+      <button id="doc-close" type="button" aria-label="閉じる">×</button>
+    </div>
+    <div class="doc-body">
+      <div class="doc-main">
+        <iframe id="doc-frame" class="hidden" sandbox="allow-scripts" title="ドキュメント"></iframe>
+        <div id="md-body" class="md-body hidden"></div>
+      </div>
+      <aside class="comment-pane">
+        <div class="comment-pane-header">
+          <span>💬 コメント <span id="comment-count"></span></span>
+          <div class="comment-pane-actions">
+            <button id="copy-json" type="button" class="ghost" title="mce 互換のコメント JSON をコピー">JSON</button>
+            <button id="copy-prompt" type="button" title="Claude Code への修正指示プロンプトをコピー">プロンプトコピー</button>
+            <button id="send-inbox" type="button" class="ghost" title="コメントを対象プロジェクトの .agent/feedback-inbox/ に書き出し、取り込みコマンド /auto-feedback --inbox <パス> をコピー">📮 inbox</button>
+          </div>
+        </div>
+        <div id="comment-panel" class="comment-panel"></div>
+        <div class="comment-pane-hint">本文のテキストを選択するとコメントを追加できます（自動保存: <code>&lt;ファイル&gt;.comments.json</code>）</div>
+      </aside>
+    </div>
+    <div id="doc-path" class="player-path"></div>
+  </div>
+</div>
+
+<div id="comment-popover" class="comment-popover hidden">
+  <div id="comment-popover-label" class="comment-popover-label"></div>
+  <textarea id="comment-popover-text" rows="3" placeholder="コメントを入力（Ctrl+Enter で保存）"></textarea>
+  <div class="comment-popover-actions">
+    <button id="comment-popover-cancel" type="button" class="ghost">キャンセル</button>
+    <button id="comment-popover-save" type="button">保存</button>
+  </div>
+</div>
+
+<div id="player-overlay" class="player-overlay hidden" role="dialog" aria-modal="true" aria-label="動画プレイヤー">
+  <div id="player-pane" class="player-modal">
+    <div class="player-header">
+      <div class="player-header-text">
+        <div id="player-title" class="player-title"></div>
+        <div id="player-meta" class="player-meta"></div>
+      </div>
+      <span id="player-position" class="player-position"></span>
+      <button id="player-maximize" type="button" class="maximize-btn" aria-label="最大化" aria-pressed="false" title="画面いっぱいに表示（再度押すと元に戻す）">⛶</button>
+      <button id="player-close" type="button" aria-label="閉じる">×</button>
+    </div>
+    <div class="player-video-wrap">
+      <button id="player-prev" type="button" class="player-nav player-nav-prev" aria-label="前の動画">‹</button>
+      <video id="player" controls controlslist="noplaybackrate" disablepictureinpicture preload="metadata" loop></video>
+      <button id="player-next" type="button" class="player-nav player-nav-next" aria-label="次の動画">›</button>
+    </div>
+    <div class="player-controls">
+      <label>再生速度：</label>
+      <div id="speed-buttons" class="speed-buttons">
+        <button type="button" data-rate="0.25" class="active">0.25x</button>
+        <button type="button" data-rate="0.5">0.5x</button>
+        <button type="button" data-rate="0.75">0.75x</button>
+        <button type="button" data-rate="1.0">1.0x</button>
+        <button type="button" data-rate="1.5">1.5x</button>
+        <button type="button" data-rate="2.0">2.0x</button>
+      </div>
+      <button id="frame-comment" type="button">📸 このフレームにコメント</button>
+      <button id="video-copy-prompt" type="button" class="ghost hidden">プロンプトコピー</button>
+      <button id="video-send-inbox" type="button" class="ghost hidden" title="コメントを対象プロジェクトの .agent/feedback-inbox/ に書き出し、取り込みコマンド /auto-feedback --inbox <パス> をコピー">📮 inbox</button>
+      <button id="player-loop" type="button" class="toggle-btn active" aria-pressed="true">⟳ リピート</button>
+      <button id="player-delete" type="button" class="danger">この動画を削除</button>
+    </div>
+    <div id="video-comment-pane" class="video-comment-pane hidden">
+      <div id="video-comment-panel" class="comment-panel"></div>
+    </div>
+    <div id="player-path" class="player-path"></div>
+  </div>
+</div>
+
+<script src="/mdRender.js"></script>
+<script src="/commentCore.js"></script>
+<script src="/commentUi.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "id": "autobuild-normal",
+  "name": "auto-build 正常系: F3 統計機能のフル自律実装（Build→E2E→QA→FixLoop）",
+  "loop": "auto-build",
+  "tier": "full",
+  "budget_usd": 25,
+  "needs_server": true,
+  "task_md": "# タスク: DESIGN.md F3（統計機能）の自律実装\n\nDESIGN.md の F3 を実装する（GET /api/stats と画面のカウンタ表示）。詳細仕様は DESIGN.md を参照。",
+  "prompt": "/auto-build を実行してください。REQUIREMENTS.md と DESIGN.md は確定済み（このリポジトリ直下）。実装対象は DESIGN.md の未実装機能のうち F3（統計機能）のみ（F2 挨拶 API は今回のスコープ外）。dev_url は http://localhost:3987（起動済み）、認証は不要（auth なし）。issue_number は null。create_pr は false（PR は作成しない）。max_attempts は 3。ユーザーへの追加確認はせず、既定値で起動すること。",
+  "expected": {
+    "final_status": ["all-green", "partial-green"],
+    "max_commits": 15
+  },
+  "trap": false,
+  "assertions": [
+    "GET /api/stats が実装され、npm test が全件 PASS する（実際に実行して確認）",
+    "public/index.html にカウンタ表示（総数・完了数）が追加されている",
+    "E2E テストが追加・実行され、test-results/ に動画（.webm）が生成されている",
+    "QA が実行され、.agent/evidence/*/qa/ に探索証跡（スクリーンショット等）が残っている",
+    "final_status が all-green（または partial-green で残課題が open_issues に列挙されている）",
+    "PR が作成されていない（create_pr: false の遵守）",
+    ".agent/autopilot/*/state.md に attempt 履歴が記録されている"
+  ]
+}
