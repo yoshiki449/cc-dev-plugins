@@ -9,6 +9,7 @@
 | リポジトリの `CLAUDE.md`・`.claude/rules/`・`.claude/skills/`・`.claude/agents/` | 届く | — |
 | リポジトリの `.claude/settings.json` の hook | 届く | — |
 | リポジトリの `.claude/settings.json` の plugin 宣言 | **効かない**（ドキュメントでは入るとされるが実測で入らない） | Setup script で `claude plugin install --scope user` する |
+| plugin の更新 | `claude plugin install` は「無ければ入れる」だけで、既に入っていると marketplace の最新コミットを追わない。環境のキャッシュを作り直しても、install だけでは古い版のまま止まる | install の直後に `claude plugin marketplace update` と `claude plugin update` も呼ぶ |
 | リポジトリの `.mcp.json` | 届く | 対話で承認できないので `enabledMcpjsonServers` で有効化しておく |
 | `~/.claude/CLAUDE.md`・`~/.claude/skills/` | 届かない | 必要な部分をリポジトリの `.claude/rules/` などにコミットする |
 | ユーザー設定でだけ有効にした plugin | 届かない | Setup script で入れる |

@@ -11,10 +11,17 @@ mkdir -p /opt/setup-log
 # plugin の読み込みはセッション起動時に1回だけなので、SessionStart hook から入れても間に合わない。
 # Claude の起動前に走るここで入れると、そのセッションから使える。
 # cc-meta は ~/.cc-plugins/.env が無いと止まるので入れない。
+#
+# install は「無ければ入れる」だけで、既に入っていれば何もしない（marketplace の最新コミットを
+# 追わない）。marketplace 自体も add が account 単位で永続するらしく、この環境のキャッシュを
+# 作り直しても marketplace update／plugin update を呼ばない限り古い版のまま止まっていた
+# （2026-09 実測）。install の直後に必ず update も呼ぶ
 {
   claude plugin marketplace add https://github.com/yoshiki449/cc-dev-plugins.git
+  claude plugin marketplace update cc-dev-plugins
   for p in dev-flow poc-flow git-secret-guard; do
     claude plugin install "$p@cc-dev-plugins" --scope user
+    claude plugin update "$p@cc-dev-plugins"
   done
 } > /opt/setup-log/plugin.log 2>&1 || true
 
