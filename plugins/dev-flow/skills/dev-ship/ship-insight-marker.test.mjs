@@ -45,3 +45,20 @@ test('E3.5 の手順が fail-closed の明示と session-insight マーカー形
   assert.match(body, /<!-- session-insight v1 -->/);
   assert.match(body, /<!-- \/session-insight -->/);
 });
+
+test('見出しが「E7 へ進む前に必ず実行する」を明示している（ship-local-only の "E7 へ進み" を読んで素通りするリスクの対策）', () => {
+  const e35HeadingLine = md.split('\n').find((l) => l.startsWith('### E3.5.'));
+  assert.ok(e35HeadingLine, 'E3.5 の見出し行が見つからない');
+  assert.match(e35HeadingLine, /E7 に進む前に必ず実行する/);
+});
+
+test('既存の session-insight ブロックがあれば追記しない（再 ship での重複防止）', () => {
+  const e35Start = md.indexOf('### E3.5.');
+  const e4 = md.indexOf('### E4.');
+  const body = md.slice(e35Start, e4);
+  assert.match(
+    body,
+    /`<!-- session-insight v1 -->` が既に含まれていれば、この手順は何もせず終える/,
+    '重複防止の一文が本文から消えている（再 ship で同一 PR 本文にブロックが重複しうる）'
+  );
+});
