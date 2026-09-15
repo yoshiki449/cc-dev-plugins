@@ -150,9 +150,13 @@ test('Setup script のテンプレートは日本語のときに Noto Sans CJK J
   assert.ok(install >= 0 && cache > install, 'フォントを入れた後にキャッシュを作り直していない');
 });
 
-test('Setup script のテンプレートは MCP パッケージを起動前に取得する例を持つ', () => {
-  // セッション開始時に npx がその場で取得すると、ファイルが途中で切れて MCP が起動に失敗することがあった
-  const stdout = apply(tempRepo()).stdout;
-  const [, body = ''] = stdout.split(/^-{20,}$/m);
-  assert.match(body, /^# \( for pkg in <\.mcp\.json に書いたパッケージ@版> \.\.\.; do timeout \d+ npx -y "\$pkg" --version < \/dev\/null; done \) > \/opt\/setup-log\/mcp\.log 2>&1 \|\| true &$/m);
+test('Setup script のテンプレートは MCP をユーザー単位で登録し、ブラウザまで起動前に用意する', () => {
+  // 複数リポジトリのセッションではリポジトリの .mcp.json が効かないので、環境側でユーザー単位に登録する
+  const out = templateCode(apply(tempRepo()).stdout);
+  for (const [name, pkg] of [['playwright', '@playwright/mcp@'], ['context7', '@upstash/context7-mcp@']]) {
+    const add = out.match(new RegExp(`claude mcp add --scope user ${name} -e npm_config_prefer_offline=true -- npx -y (${pkg.replace(/[/@.]/g, '\\$&')}[0-9][^\\s]*)`));
+    assert.ok(add, `${name} をユーザー単位で登録していない（名前の後ろに -e を置く）`);
+    assert.match(out, new RegExp(`timeout \\d+ npx -y ${add[1].replace(/[/@.]/g, '\\$&')} --version < /dev/null`), `${name} の事前取得の版が登録と違う`);
+  }
+  assert.match(out, /npx -y @playwright\/mcp@[0-9][^\s]* install-browser chrome-for-testing/);
 });

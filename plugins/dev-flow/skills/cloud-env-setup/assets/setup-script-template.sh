@@ -39,6 +39,20 @@ XML
   fc-match sans-serif:lang=ja
 ) > /opt/setup-log/apt.log 2>&1 || true &
 
+# MCP: 複数リポジトリを付けたセッションではリポジトリの .mcp.json が効かない（作業ディレクトリが
+# 各リポジトリの親になる）ので、ここでユーザー単位に登録する。セッション開始時に npx がその場で取得すると、
+# ファイルが途中で切れて MCP が起動に失敗することがあり、そのセッションでは再接続されない。
+# 版を固定し、起動前に取得し、npm_config_prefer_offline で取得済みのキャッシュから起動させる
+# （付けないと npx はキャッシュがあってもレジストリへ問い合わせる）。-e はサーバー名の後ろに置く
+{
+  claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright/mcp@0.0.80 --caps=devtools --output-dir=/tmp/playwright-mcp
+  claude mcp add --scope user context7 -e npm_config_prefer_offline=true -- npx -y @upstash/context7-mcp@4.1.0
+  timeout 180 npx -y @playwright/mcp@0.0.80 --version < /dev/null
+  timeout 180 npx -y @upstash/context7-mcp@4.1.0 --version < /dev/null
+  # MCP のブラウザは playwright MCP が同梱する Playwright の版に合わせる（プリインストール版とは違う）
+  timeout 240 npx -y @playwright/mcp@0.0.80 install-browser chrome-for-testing < /dev/null
+} > /opt/setup-log/mcp.log 2>&1 || true &
+
 # --- 以下は該当リポジトリのときだけコメントを外す ---
 
 # docker compose を使うリポジトリ: イメージを先に取ってキャッシュに載せる
@@ -47,12 +61,8 @@ XML
 # 作業ディレクトリに依存しないよう、compose ファイルは読まずにイメージ名を並べる
 # ( for img in <イメージ名:タグ> ...; do docker pull "$img"; done ) > /opt/setup-log/docker.log 2>&1 || true &
 
-# .mcp.json に npx で起動する MCP があるリポジトリ: パッケージを Claude の起動前に取得しておく
-# ⚠ セッション開始時に npx がその場で取得すると、ファイルが途中で切れて MCP が起動に失敗することがあり、
-#    そのセッションでは再接続されない。版は .mcp.json と揃え、.mcp.json 側の各サーバーに
-#    "env": {"npm_config_prefer_offline": "true"} を付けて取得済みのキャッシュから起動させる
-#    （付けないと npx はキャッシュがあってもレジストリへ問い合わせ、その場で取得し直す）
-# ( for pkg in <.mcp.json に書いたパッケージ@版> ...; do timeout 180 npx -y "$pkg" --version < /dev/null; done ) > /opt/setup-log/mcp.log 2>&1 || true &
+# リポジトリの .mcp.json にも npx で起動する MCP を書く場合（1リポジトリだけのセッション・ローカル用）は、
+# 版を上の登録と揃え、各サーバーに "env": {"npm_config_prefer_offline": "true"} を付ける
 
 wait
 echo "setup script done"

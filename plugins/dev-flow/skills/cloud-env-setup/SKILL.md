@@ -11,6 +11,21 @@ description: Claude Code のクラウドセッション（claude.ai/code・`clau
 
 ## 前提知識
 
+### 複数リポジトリのセッションでは、リポジトリ側の hook と .mcp.json が効かない
+
+1つのセッションに複数のリポジトリを付けると、作業ディレクトリは各リポジトリの親（VM のホームディレクトリ）になり、`CLAUDE_PROJECT_DIR` は空になる。CLAUDE.md は全リポジトリ分が読まれるが、**リポジトリに置いた SessionStart hook と `.mcp.json` は効かない**（2026-09 実測）。ユーザー単位で入れた plugin と MCP は効く。
+
+そのため、仕組みは次の3層に置く。
+
+| 層 | 置き場所 | 中身 |
+|---|---|---|
+| 共通の環境 | claude.ai の環境1つ（複数のリポジトリで使い回す） | Network access、Setup script（plugin・gh・日本語フォント・MCP のユーザー単位での登録）。テンプレートは `assets/setup-script-template.sh` |
+| 共通の仕組み | dev-flow の `cloud-stack` スキルと SessionStart hook | リポジトリの発見、使い捨ての準備、CA 入りのクラウド用ビルドでのスタック起動、テスト |
+| リポジトリ固有 | 各リポジトリの `.claude/cloud-stack.json` | 準備コマンド、compose、CA を入れる Dockerfile、health、テスト。書式は cloud-stack の SKILL.md |
+
+**新しくリポジトリを対応させるときは `.claude/cloud-stack.json` を置く。** 下のスクリプトが生成するリポジトリ側の SessionStart hook（`scripts/install_pkgs.sh`）は、1リポジトリだけのセッションでしか動かない。`.claude/cloud-stack.json` を置いたリポジトリでは、dev-flow の hook と二重に動くので生成しない（`--no-hook` 相当の運用として、生成されたら消す）。
+
+
 ### plugin は Setup script で入れる
 
 ユーザー設定（`~/.claude/settings.json`）の plugin はクラウドに届かない。公式ドキュメントはリポジトリの `.claude/settings.json` に `extraKnownMarketplaces` と `enabledPlugins` を書けば入るとしているが、実測では入らない（起動時のインストーラが `no marketplaces declared` で何もせず、宣言は `marketplace not registered` で捨てられる）。

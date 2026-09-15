@@ -1,5 +1,5 @@
 {
-  "description": "PreToolUse(Edit|Write) で保護ファイルと .agent/loop-denylist.txt（dev-flow denylist）への書き込みをブロックする（denylist ファイルが無いプロジェクトでは固定保護パターンのみ有効）。PreToolUse(Bash) で /dev-ship 非経由の gh pr create をブロックする（.agent/ があるリポジトリのみ、マーカー .git/dev-ship-active（--git-common-dir 配下） で解除）。PreToolUse(Edit|Write|Bash) の suggest-dev-phase.sh が「コード書込・gh issue create・要件/設計md 書込」の瞬間に該当フェーズスキルの起動リマインダーを注入する（注入型・ブロックしない・マーカー .agent/.dev-flow-active で沈黙）。UserPromptSubmit で発話が dev-flow のトリガーワードに一致したら該当スキルの起動リマインダーをコンテキストに注入する。",
+  "description": "PreToolUse(Edit|Write) で保護ファイルと .agent/loop-denylist.txt（dev-flow denylist）への書き込みをブロックする（denylist ファイルが無いプロジェクトでは固定保護パターンのみ有効）。PreToolUse(Bash) で /dev-ship 非経由の gh pr create をブロックする（.agent/ があるリポジトリのみ、マーカー .git/dev-ship-active（--git-common-dir 配下） で解除）。PreToolUse(Edit|Write|Bash) の suggest-dev-phase.sh が「コード書込・gh issue create・要件/設計md 書込」の瞬間に該当フェーズスキルの起動リマインダーを注入する（注入型・ブロックしない・マーカー .agent/.dev-flow-active で沈黙）。UserPromptSubmit で発話が dev-flow のトリガーワードに一致したら該当スキルの起動リマインダーをコンテキストに注入する。 SessionStart でクラウドセッションのとき（CLAUDE_CODE_REMOTE=true）だけ cloud-stack prepare を実行し、.claude/cloud-stack.json を持つリポジトリの軽い準備を始める（リポジトリ側の hook は複数リポジトリのセッションで効かないため plugin が持つ）。",
   "hooks": {
     "PreToolUse": [
       {
@@ -40,6 +40,18 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/suggest-dev-skill.sh\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/cloud-session-start.sh\"",
+            "timeout": 120
           }
         ]
       }
