@@ -362,6 +362,30 @@ E4〜E6 の保存先（ai-memory の MCP と `~/.agent/worklog/`）は手元の�
 `CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないときは、E4〜E6 を実行せずに E7 へ進み、終了メッセージに「E4〜E6（記憶保存・作業日報・記憶整理）は保存先が無い環境なので飛ばした」と書く。
 <!-- /ship-local-only -->
 
+### E3.5. 知見マーカーの追記（クラウド実行時のみ）
+
+E4〜E6 を飛ばす環境（上の判定に同じ）では、保存されるはずだった内容がそのまま消える。
+消える前に、E2 で作成した PR の本文へ機械可読な形で書き出しておくと、後段の任意の仕組みが機械的に拾える。
+
+<!-- ship-insight-marker -->
+`CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないとき、かつ `gh repo view --json visibility -q .visibility` が厳密に `PRIVATE` のときだけ、E4 で保存するはずだった内容を `<!-- session-insight v1 -->`〜`<!-- /session-insight -->` ブロックとして PR 本文に追記する。それ以外（判定不能を含む）は書かない。
+<!-- /ship-insight-marker -->
+
+1. 条件判定は上の1文のとおり **fail closed**。`gh repo view` が失敗した・`PUBLIC`／`INTERNAL`だった・判定コマンドがエラーになった、のいずれでも「書かない」側に倒す
+2. 満たす場合、E4 で書くはずだった内容（作業サマリー＝状態、技術知見＝知見）を Markdown で用意し、E2 で作成した PR の本文に**追記**する（`gh pr view <PR番号> --json body -q .body` で現在の本文を取り、末尾に足して `gh pr edit <PR番号> --body-file` で書き戻す）:
+   ```markdown
+   <!-- session-insight v1 -->
+   ## 状態
+   <このセッションの作業サマリー相当。PR番号・ブランチ・対応内容など>
+
+   ## 知見
+   <再利用できる技術知見があれば。無ければこの節ごと省略してよい>
+   <!-- /session-insight -->
+   ```
+   「状態」「知見」の見出しは期待するが強制しない。分けられなければ自由記述でよい（最終分離は取り込み側に委ねる）
+3. 複数リポジトリで PR を作成した場合は、各 PR に対して同じ手順を行う
+4. 書いたか・条件不成立で書かなかったかを1行報告する
+
 ### E4. ai-memory 保存
 1. `memory_search` で重複チェック
 2. `memory_store` で作業サマリーを保存（category: context, importance: 3-4）
