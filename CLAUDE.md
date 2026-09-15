@@ -48,6 +48,19 @@ worktree ごとに消えるため。記法は dev-flow の `skills/_shared/refer
 | **cc-meta** | この marketplace 自身の管理（`/promote-check` `/promote-skill` `/mark-keep`） |
 | **git-secret-guard** | `git push` 直前の走査。秘密の値（`secret-scan.sh`）と公開してはいけない固有名（`publish-scan.sh`）の2本 |
 
+## 対話・PR の言語
+
+このファイルはローカル CLI でもクラウド実行環境（claude.ai/code）でも同じようにリポジトリ直下から
+読み込まれる。一方で `~/.claude/CLAUDE.md` のようなホームディレクトリ側のグローバル設定は、
+使い捨てのクラウドコンテナには持ち込まれない。**日本語での対話を前提にするなら、
+ここ（プロジェクトの CLAUDE.md）に明記しておく必要がある。**
+
+このリポジトリで作業するときは、ユーザーとの対話・内部の思考（thinking）・commit メッセージの
+説明文・PR のタイトルと本文を日本語で書く。英語のまま残すのは次の2つだけ:
+
+- コード自体（識別子・コメントは既存の言語規約に従う）
+- ツール側が固定している attribution フッター（`Co-Authored-By:` など）
+
 ## 編集・運用ルール
 
 ### version 規約
