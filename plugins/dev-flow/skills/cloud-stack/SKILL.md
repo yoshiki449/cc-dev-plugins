@@ -44,6 +44,7 @@ bash $S down <repo>
   "playwright": ["e2e"],
   "compose": {
     "files": ["docker-compose.yml", "docker-compose.ci.yml"],
+    "env_file": "env.dev",
     "ca_builds": [
       { "dockerfile": "Dockerfile.backend", "context": ".", "services": ["backend", "scheduler"] },
       { "dockerfile": "frontend/Dockerfile", "context": "frontend", "services": ["frontend"] }
@@ -65,6 +66,7 @@ bash $S down <repo>
 | `npm` | `npm ci` するディレクトリ |
 | `playwright` | `@playwright/test` の版のブラウザを入れるディレクトリ（node_modules が無ければ先に `npm ci`） |
 | `compose.files` | `docker compose -f` に渡すファイル（リポジトリからの相対。兄弟リポジトリの `../other/compose.yml` も可） |
+| `compose.env_file` | `--env-file` に渡すファイル（省略可）。`environment: - VAR`（値なし）形式のサービスは、シェルの環境変数かこれからしか値が入らない。`prepare` で使い捨ての値を書き、ファイルが無ければ何も付けない |
 | `compose.ca_builds` | CA を入れてビルドする Dockerfile と、そのビルドコンテキストと、**その Dockerfile でビルドする全サービス**。漏れたサービスだけ証明書エラーで落ちる。context は兄弟リポジトリでもよい（CA は実際に置いたリポジトリの除外に足す） |
 | `compose.pre_up` / `post_up` | ビルドの前後に実行するコマンド（外部ネットワークの作成、DB の初期化など） |
 | `health` | 起動を待つ URL と、応答が無いときに起こし直すサービス |
