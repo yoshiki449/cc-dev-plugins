@@ -32,7 +32,7 @@ test('分岐は ship-local-only の後、E4 の前にある', () => {
 test('書き込み条件は PRIVATE 厳密一致で fail closed', () => {
   const lines = gate().text.split('\n').filter(Boolean);
   assert.equal(lines.length, 1, '正準は1文のはず（緩める変更を検知する）');
-  assert.match(lines[0], /^`CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないとき、かつ `gh repo view --json visibility -q \.visibility` が厳密に `PRIVATE` のときだけ、/);
+  assert.match(lines[0], /^`CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないとき、かつ `gh repo view --repo <owner>\/<repo> --json visibility -q \.visibility` が厳密に `PRIVATE` のときだけ、/);
   assert.match(lines[0], /それ以外（判定不能を含む）は書かない。$/);
 });
 

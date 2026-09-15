@@ -1252,7 +1252,7 @@ const prResult = !CREATE_PR ? null : await agent(
   - レビュー手順チェックリスト（QA 動画 0.5x 再生推奨など）
   - 計画からの逸脱: ${NOTES_FILE} の Deviations 表を Read し、逸脱があれば「## 計画からの逸脱（Deviations）」セクションとして転載（無ければ「逸脱なし」と1行）
   - Closes #${A.issue_number ?? '(該当 Issue なし)'}
-  - 知見マーカー（条件付き）: \`CLAUDE_CODE_REMOTE\` が \`true\` のとき、または \`memory_store\` ツールが使えないとき、かつ対象リポジトリの \`gh repo view --json visibility -q .visibility\` が厳密に \`PRIVATE\` のときだけ、本文に \`<!-- session-insight v1 -->\`〜\`<!-- /session-insight -->\` ブロックを追記する（この自律ビルドで得た状態・技術知見を自由記述の Markdown で書く）。それ以外（\`PUBLIC\`／\`INTERNAL\`／判定失敗を含む）は書かない
+  - 知見マーカー（条件付き）: \`CLAUDE_CODE_REMOTE\` が \`true\` のとき、または \`memory_store\` ツールが使えないとき、かつ \`git -C "$REPO_ROOT" remote get-url origin\` から解決した owner/repo に対する \`gh repo view --repo <owner>/<repo> --json visibility -q .visibility\` が厳密に \`PRIVATE\` のときだけ、本文に \`<!-- session-insight v1 -->\`〜\`<!-- /session-insight -->\` ブロックを追記する（この自律ビルドで得た状態・技術知見を自由記述の Markdown で書く）。それ以外（\`PUBLIC\`／\`INTERNAL\`／判定失敗を含む）は書かない
 - 動画合計サイズ < 50MB なら .agent/autopilot/${TASK_ID}/review/videos/ を ZIP 化し、
   gh release create で Release Assets に添付して PR 本文からリンクする。
 - 50MB 以上なら PR 本文に「動画はローカル ${REVIEW_DIR}videos/ で確認」と注記。

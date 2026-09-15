@@ -368,11 +368,11 @@ E4〜E6 を飛ばす環境（上の判定に同じ）では、保存されるは
 消える前に、E2 で作成した PR の本文へ機械可読な形で書き出しておくと、後段の任意の仕組みが機械的に拾える。
 
 <!-- ship-insight-marker -->
-`CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないとき、かつ `gh repo view --json visibility -q .visibility` が厳密に `PRIVATE` のときだけ、E4 で保存するはずだった内容を `<!-- session-insight v1 -->`〜`<!-- /session-insight -->` ブロックとして PR 本文に追記する。それ以外（判定不能を含む）は書かない。
+`CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないとき、かつ `gh repo view --repo <owner>/<repo> --json visibility -q .visibility` が厳密に `PRIVATE` のときだけ、E4 で保存するはずだった内容を `<!-- session-insight v1 -->`〜`<!-- /session-insight -->` ブロックとして PR 本文に追記する。それ以外（判定不能を含む）は書かない。
 <!-- /ship-insight-marker -->
 
-1. 条件判定は上の1文のとおり **fail closed**。`gh repo view` が失敗した・`PUBLIC`／`INTERNAL`だった・判定コマンドがエラーになった、のいずれでも「書かない」側に倒す
-2. 満たす場合、E4 で書くはずだった内容（作業サマリー＝状態、技術知見＝知見）を Markdown で用意し、E2 で作成した PR の本文に**追記**する（`gh pr view <PR番号> --json body -q .body` で現在の本文を取り、末尾に足して `gh pr edit <PR番号> --body-file` で書き戻す）:
+1. 条件判定は上の1文のとおり **fail closed**。`<owner>/<repo>` は対象リポジトリの絶対パス（E0 で使った `REPO_ROOT`）から `git -C "$REPO_ROOT" remote get-url origin` で解決する（cwd には頼らない。複数リポジトリでは cwd がどのリポジトリを指しているか保証できないため）。`gh repo view` が失敗した・`PUBLIC`／`INTERNAL`だった・判定コマンドがエラーになった、のいずれでも「書かない」側に倒す
+2. 満たす場合、E4 で書くはずだった内容（作業サマリー＝状態、技術知見＝知見）を Markdown で用意し、E2 で作成した PR の本文に**追記**する（`gh pr view --repo <owner>/<repo> <PR番号> --json body -q .body` で現在の本文を取り、末尾に足して `gh pr edit --repo <owner>/<repo> <PR番号> --body-file` で書き戻す）:
    ```markdown
    <!-- session-insight v1 -->
    ## 状態
