@@ -20,8 +20,24 @@ mkdir -p /opt/setup-log
 
 # gh と日本語フォントはプリインストールされていない（既定の日本語フォントは中国語フォントに落ちる）。
 # ベースイメージにある PPA が 403 で apt-get update が非ゼロ終了するので、&& でつながない
-( apt-get update -qq; apt-get install -y --no-install-recommends gh fonts-noto-cjk fontconfig ) \
-  > /opt/setup-log/apt.log 2>&1 || true &
+# fonts-noto-cjk を入れても、lang=ja ではプリインストールの中国語フォントが先に選ばれるので、
+# 日本語のときだけ Noto Sans CJK JP を先頭にする（欧文の既定フォントは変えない）
+(
+  apt-get update -qq
+  apt-get install -y --no-install-recommends gh fonts-noto-cjk fontconfig
+  cat > /etc/fonts/local.conf <<'XML'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>ja</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK JP</string></edit>
+  </match>
+</fontconfig>
+XML
+  fc-cache -f
+  fc-match sans-serif:lang=ja
+) > /opt/setup-log/apt.log 2>&1 || true &
 
 # --- 以下は該当リポジトリのときだけコメントを外す ---
 

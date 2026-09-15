@@ -30,9 +30,10 @@ Setup script を混ぜずに済みます。
 | plugin | リポジトリの settings.json に宣言しても入らない。SessionStart hook から入れても、そのセッションには間に合わない | Setup script で入れる（テンプレートにある） |
 | gh | プリインストールされていない | Setup script で apt から入れる。入らないときは GitHub MCP を使う |
 | apt | ベースイメージの PPA が 403 で `apt-get update` が非ゼロ終了する | `&&` でつながず、update の失敗で install を止めない |
-| 日本語フォント | 既定の日本語フォントが中国語フォント（WenQuanYi Zen Hei）で、スクリーンショットの字形がずれる | `fonts-noto-cjk` を入れる |
+| 日本語フォント | 既定の日本語フォントが中国語フォント（WenQuanYi Zen Hei）。`fonts-noto-cjk` を入れても `lang=ja` では中国語フォントが先に選ばれる | `fonts-noto-cjk` を入れ、`/etc/fonts/local.conf` で `lang=ja` のときだけ Noto Sans CJK JP を先頭にする（テンプレートにある） |
 | Docker Hub | 既定の許可リストにある `production.cloudflare.docker.com` ではなく `production.cloudfront.docker.com` から配られ、403 で pull できない | Network access を Custom にして足す |
 | Docker ビルド | VM はプロキシの自己署名 CA 越しに外へ出るので、ビルドコンテナ内の pip / npm が `CERTIFICATE_VERIFY_FAILED` | `/root/.ccr/ca-bundle.crt` をビルドに渡す（SKILL.md の実行手順3） |
+| playwright MCP | セッション内で実行した `claude mcp list` は `.mcp.json` のサーバーを `⏸ Pending approval` と表示するが、セッション本体は承認なしで読み込んでおりツールは使える | 表示ではなく、ツールが実際に使えるかで確かめる |
 | Playwright | `/opt/pw-browsers` にプリインストールされたブラウザが、`@playwright/test` や playwright MCP の要求する版と違う | セッション初期化で `npx playwright install chromium chromium-headless-shell`、MCP は `npx @playwright/mcp@<版> install-browser chrome-for-testing` |
 
 ## Network access は Custom にして既定のリストを残す

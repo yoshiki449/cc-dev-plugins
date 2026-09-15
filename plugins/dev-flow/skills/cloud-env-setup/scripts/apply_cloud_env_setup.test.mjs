@@ -136,3 +136,16 @@ test('既存の install_pkgs.sh は上書きしない', () => {
   apply(dir);
   assert.equal(fs.readFileSync(path.join(dir, 'scripts', 'install_pkgs.sh'), 'utf8'), '# 手書き\n');
 });
+
+test('Setup script のテンプレートは日本語のときに Noto Sans CJK JP を先頭にする', () => {
+  // fonts-noto-cjk を入れても、プリインストールの中国語フォントが lang=ja で先に選ばれた（2026-09 実測）
+  const out = templateCode(apply(tempRepo()).stdout);
+  const conf = out.match(/<fontconfig>[\s\S]*?<\/fontconfig>/);
+  assert.ok(conf, 'fontconfig の設定が無い');
+  assert.match(conf[0], /<test name="lang" compare="contains"><string>ja<\/string><\/test>/);
+  assert.match(conf[0], /<edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK JP<\/string><\/edit>/);
+  assert.match(out, /> \/etc\/fonts\/local\.conf/);
+  const install = out.indexOf('apt-get install');
+  const cache = out.indexOf('fc-cache -f');
+  assert.ok(install >= 0 && cache > install, 'フォントを入れた後にキャッシュを作り直していない');
+});
