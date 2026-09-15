@@ -124,33 +124,40 @@ prepare_ca_build() {
     [ "$n" -gt 0 ] || return 0
     echo "services:" > "$override"
     for i in $(seq 0 $((n - 1))); do
-        local df ctx gen
+        local df ctx gen ctx_abs ca_abs
         df=$(mf "$repo" ".compose.ca_builds[$i].dockerfile")
         ctx=$(mf "$repo" ".compose.ca_builds[$i].context // \".\"")
         gen="$state/Dockerfile.cloud.$i"
-        CA_COPIES+=("$repo/$ctx/$CA_IN_CONTEXT")
-        cp "$CA_BUNDLE" "$repo/$ctx/$CA_IN_CONTEXT" || return 1
-        exclude_locally "$repo" "$ctx/$CA_IN_CONTEXT"
+        # context は兄弟リポジトリ（../other）のこともある。相対のまま組み立てると、置いた先と
+        # 違うリポジトリの除外に登録してしまうので、先に正規化した絶対パスにする
+        ctx_abs=$(cd "$repo/$ctx" && pwd) || return 1
+        ca_abs="$ctx_abs/$CA_IN_CONTEXT"
+        CA_COPIES+=("$ca_abs")
+        cp "$CA_BUNDLE" "$ca_abs" || return 1
+        exclude_locally "$ca_abs"
         inject_ca "$repo/$df" > "$gen"
         local svc
         while IFS= read -r svc; do
             {
                 echo "  $svc:"
                 echo "    build:"
-                echo "      context: $(cd "$repo/$ctx" && pwd)"
+                echo "      context: $ctx_abs"
                 echo "      dockerfile: $gen"
             } >> "$override"
         done < <(mf "$repo" ".compose.ca_builds[$i].services[]")
     done
 }
 
-# ビルドの間だけコンテキストに置く CA を、消し損ねてもコミットしないよう、そのクローンだけの除外に足す
+# ビルドの間だけ置く CA を、消し損ねてもコミットしないよう除外に足す。context が兄弟リポジトリの
+# こともあるので、呼び出し元のリポジトリではなく、CA を実際に置いたリポジトリの除外に足す
 exclude_locally() {
-    local repo=$1 path=${2#./} exclude
-    exclude="$(git -C "$repo" rev-parse --git-path info/exclude)"
-    case "$exclude" in /*) ;; *) exclude="$repo/$exclude" ;; esac
+    local abs=$1 owner rel exclude
+    owner=$(cd "$(dirname "$abs")" && git rev-parse --show-toplevel 2>/dev/null) || return 0
+    rel=${abs#"$owner"/}
+    exclude="$(git -C "$owner" rev-parse --git-path info/exclude)"
+    case "$exclude" in /*) ;; *) exclude="$owner/$exclude" ;; esac
     mkdir -p "$(dirname "$exclude")"
-    grep -qxF "/$path" "$exclude" 2>/dev/null || echo "/$path" >> "$exclude"
+    grep -qxF "/$rel" "$exclude" 2>/dev/null || echo "/$rel" >> "$exclude"
 }
 
 compose_args() {

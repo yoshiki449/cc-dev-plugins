@@ -65,14 +65,14 @@ bash $S down <repo>
 | `npm` | `npm ci` するディレクトリ |
 | `playwright` | `@playwright/test` の版のブラウザを入れるディレクトリ（node_modules が無ければ先に `npm ci`） |
 | `compose.files` | `docker compose -f` に渡すファイル（リポジトリからの相対。兄弟リポジトリの `../other/compose.yml` も可） |
-| `compose.ca_builds` | CA を入れてビルドする Dockerfile と、そのビルドコンテキストと、**その Dockerfile でビルドする全サービス**。漏れたサービスだけ証明書エラーで落ちる |
+| `compose.ca_builds` | CA を入れてビルドする Dockerfile と、そのビルドコンテキストと、**その Dockerfile でビルドする全サービス**。漏れたサービスだけ証明書エラーで落ちる。context は兄弟リポジトリでもよい（CA は実際に置いたリポジトリの除外に足す） |
 | `compose.pre_up` / `post_up` | ビルドの前後に実行するコマンド（外部ネットワークの作成、DB の初期化など） |
 | `health` | 起動を待つ URL と、応答が無いときに起こし直すサービス |
 | `tests` | 名前とコマンド。クラウド用の上書き compose は付かないので、`exec` するだけのコマンドにする |
 
 ### 書くときの注意
 
-- **本番用の Dockerfile と compose は変えない。** CA 入りの Dockerfile は `~/.cloud-stack/<repo>/` に生成され、上書き compose で差し替わる。ビルドの間だけ各コンテキストに `.cloud-stack-ca.crt` を置き、終わったら消す（そのクローンの `.git/info/exclude` にも足す）
+- **本番用の Dockerfile と compose は変えない。** CA 入りの Dockerfile は `~/.cloud-stack/<repo>/` に生成され、上書き compose で差し替わる。ビルドの間だけ各コンテキストに `.cloud-stack-ca.crt` を置き、終わったら消す。除外に足すのは、置いた実体のクローン（`ca_builds.context` が兄弟リポジトリなら、その兄弟リポジトリ）の `.git/info/exclude`
 - CA が無い環境（ローカル）では、上書きを付けずに元の Dockerfile で起動する
 - Dockerfile が `apt-get` / `apk add` を使うなら、クラウド環境の Allowed domains に `deb.debian.org` / `dl-cdn.alpinelinux.org` が要る（既定のリストは Ubuntu だけ）。無いとビルドが 403 で落ちる
 - ホストのポートは、同じセッションの他のリポジトリと VM にプリインストールされたサービスと衝突しない値にする

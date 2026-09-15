@@ -346,6 +346,28 @@ test('ビルドの間だけ各コンテキストに CA を置き、成功後に�
   }
 });
 
+test('ca_builds の context が兄弟リポジトリなら、CA を置いた側の除外に足す', () => {
+  const w = makeWorld();
+  const repo = makeRepo(w.root, 'alpha', manifest({
+    compose: {
+      files: ['compose.yml'],
+      ca_builds: [{ dockerfile: '../beta/Dockerfile', context: '../beta', services: ['sibling'] }],
+      pre_up: [],
+      post_up: [],
+    },
+  }));
+  const sibling = makeRepo(w.root, 'beta', null);
+  fs.writeFileSync(path.join(sibling, 'Dockerfile'), FRONTEND_DOCKERFILE);
+  const r = run(w, ['up', 'alpha', '--wait']);
+  assert.equal(r.status, 0, r.stderr);
+  const caPath = path.join(sibling, '.cloud-stack-ca.crt');
+  assert.equal(fs.existsSync(caPath), false, 'ビルド後に消えていない');
+  // 消し損ねても、置いた実体（beta）の側で除外されること。alpha 側の除外は見ない
+  fs.writeFileSync(caPath, 'x');
+  assert.equal(spawnSync('git', ['-C', sibling, 'check-ignore', '-q', '.cloud-stack-ca.crt']).status, 0, 'beta 自身の除外に入っていない');
+  fs.rmSync(caPath);
+});
+
 test('ビルドに失敗したら health を待たずに失敗の目印を書き、CA を残さない', () => {
   const w = makeWorld();
   const repo = makeRepo(w.root, 'alpha', manifest());
