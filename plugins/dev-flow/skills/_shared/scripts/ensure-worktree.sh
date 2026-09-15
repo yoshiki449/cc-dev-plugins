@@ -18,9 +18,15 @@
 #
 # 終了コード:
 #   0: worktree 内（安全）
-#   1: main/master ブランチ上 or フラット repo 上（要移行）
+#   1: ベースブランチ（main/master/develop 等）上 or フラット repo 上（要移行）
 #   2: git repo ではない
 #   3: worktree 相当だが規約外のパス（動くが非推奨）
+#
+# ベースブランチの判定:
+#   まず `origin/HEAD` の symbolic-ref（git-flow で develop が既定ブランチのリポ等、
+#   clone 時に設定される）を見る。取れなければ main/master/develop を固定候補として見る。
+#   これが無いと git-flow 運用（既定ブランチが develop）のリポで「未知のブランチ上」扱いになり、
+#   ブランチを切らずに develop 上でそのまま作業→push する経路が生まれる。
 #
 # 出力する主な情報（人間可読／JSON 共通）:
 #   status         : ok | flat_repo | on_main_branch | non_worktree_path | not_a_repo
@@ -85,6 +91,22 @@ REPO_BASENAME=$(basename "$REPO_ROOT")
 REPO_PARENT=$(dirname "$REPO_ROOT")
 REPO_PARENT_BASENAME=$(basename "$REPO_PARENT")
 
+# リポジトリの既定ブランチ。origin/HEAD が設定されていればそれを正とする
+# （git-flow で develop が既定のリポでも正しく検出できる）。無ければ空のまま
+# フォールバック候補（main/master/develop）で判定する。
+DETECTED_BASE_BRANCH=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo "")
+
+is_base_branch() {
+  local b="$1"
+  if [[ -n "$DETECTED_BASE_BRANCH" && "$b" == "$DETECTED_BASE_BRANCH" ]]; then
+    return 0
+  fi
+  case "$b" in
+    main|master|develop) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 if [[ "$IS_WORKTREE" == "1" ]]; then
   # 規約準拠パスか判定: <project_folder>/worktrees/<branch-basename>
   if [[ "$REPO_PARENT_BASENAME" == "worktrees" ]]; then
@@ -112,21 +134,19 @@ else
   PROJECT_FOLDER="$REPO_ROOT"
 fi
 
-case "$BRANCH" in
-  main|master)
-    if [[ "$REPO_BASENAME" == "repo" ]]; then
-      SUGGEST="規約準拠の main clone にいる。実装・修正は worktree（$PROJECT_FOLDER/worktrees/<branch>）で行う。dev-setup を実行して worktree を作成"
-    else
-      SUGGEST="フラット構成の $BRANCH ブランチ上。dev-setup を実行して (1) 既存 repo を $PROJECT_FOLDER/repo/ に移行 (2) worktree を $PROJECT_FOLDER/worktrees/<branch>/ に作成"
-    fi
-    emit "on_main_branch" "$BRANCH" "$REPO_ROOT" "$PROJECT_FOLDER" "" "$SUGGEST" 1
-    ;;
-esac
+if is_base_branch "$BRANCH"; then
+  if [[ "$REPO_BASENAME" == "repo" ]]; then
+    SUGGEST="規約準拠の main clone にいる（ベースブランチ: $BRANCH）。実装・修正は worktree（$PROJECT_FOLDER/worktrees/<branch>）で行う。dev-setup を実行して worktree を作成"
+  else
+    SUGGEST="フラット構成の $BRANCH ブランチ（ベースブランチ）上。dev-setup を実行して (1) 既存 repo を $PROJECT_FOLDER/repo/ に移行 (2) worktree を $PROJECT_FOLDER/worktrees/<branch>/ に作成"
+  fi
+  emit "on_main_branch" "$BRANCH" "$REPO_ROOT" "$PROJECT_FOLDER" "" "$SUGGEST" 1
+fi
 
-# main/master 以外のブランチだが worktree ではないケース
+# ベースブランチ以外だが worktree ではないケース
 if [[ "$REPO_BASENAME" == "repo" ]]; then
-  SUGGEST="規約準拠の main clone を非main ブランチで使用中。worktree を作成して $PROJECT_FOLDER/worktrees/<branch>/ で作業推奨"
+  SUGGEST="規約準拠の main clone を非ベースブランチで使用中。worktree を作成して $PROJECT_FOLDER/worktrees/<branch>/ で作業推奨"
 else
-  SUGGEST="フラット構成で非main ブランチを使用中。dev-setup で $PROJECT_FOLDER/repo/ に移行し worktree に切り出す推奨"
+  SUGGEST="フラット構成で非ベースブランチを使用中。dev-setup で $PROJECT_FOLDER/repo/ に移行し worktree に切り出す推奨"
 fi
 emit "flat_repo" "$BRANCH" "$REPO_ROOT" "$PROJECT_FOLDER" "" "$SUGGEST" 1

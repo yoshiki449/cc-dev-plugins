@@ -58,10 +58,10 @@ bash skills/_shared/scripts/ensure-worktree.sh
 | status | 意味 | 次にやること |
 |---|---|---|
 | `ok` | 既に worktree 内・規約準拠 | B2 に進む（worktree はそのまま使う）|
-| `on_main_branch` + repo_basename が `repo` | 規約準拠だが main clone 上 | B1-2 の worktree 作成に進む |
-| `on_main_branch` + フラット | フラット repo の main 上 | B1-1 の自動移行を実施 |
+| `on_main_branch` + repo_basename が `repo` | 規約準拠だが main clone 上（ベースブランチ=main/master/develop 等。判定は `origin/HEAD` を優先し、無ければ main/master/develop を見る） | B1-2 の worktree 作成に進む |
+| `on_main_branch` + フラット | フラット repo のベースブランチ上 | B1-1 の自動移行を実施 |
 | `non_worktree_path` | worktree だがパスが規約外 | 動作するので B2 に進む（次回セットアップ時に規約準拠パスに揃える）|
-| `flat_repo` | フラット repo の非main ブランチ | ユーザーに確認: 「(a) 現在のブランチをそのまま worktree 化 (b) main に戻してから B1-1 移行 → 新ブランチ作成」|
+| `flat_repo` | フラット repo の非ベースブランチ | ユーザーに確認: 「(a) 現在のブランチをそのまま worktree 化 (b) ベースブランチに戻してから B1-1 移行 → 新ブランチ作成」|
 
 **移行不能ケース**（B1-1 の事前チェックで判明する。該当したら**移行を実行せず**ユーザーに確認する）:
 
