@@ -200,3 +200,59 @@ test('CLI: --diff 指定でも先頭 test_ 形式の pytest ファイルを拾�
     ],
   });
 });
+
+test('CLI: 全走査で Python 仮想環境・キャッシュ配下のベンダーテストを拾わない', () => {
+  const repo = mkTmp();
+  fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'tests', 'test_app.py'),
+    'def test_own_behavior(client):\n    assert True\n',
+  );
+
+  fs.mkdirSync(path.join(repo, '.venv', 'lib', 'pkg', 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, '.venv', 'lib', 'pkg', 'tests', 'test_vendor.py'),
+    'def test_vendor_should_not_be_collected():\n    assert True\n',
+  );
+  fs.mkdirSync(path.join(repo, 'venv', 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'venv', 'tests', 'test_vendor2.py'),
+    'def test_vendor2_should_not_be_collected():\n    assert True\n',
+  );
+  fs.mkdirSync(path.join(repo, '__pycache__'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, '__pycache__', 'test_cache.py'),
+    'def test_cache_should_not_be_collected():\n    assert True\n',
+  );
+
+  const out = JSON.parse(runCli(['--repo', repo]));
+  assert.deepEqual(out, {
+    files: [
+      {
+        file: 'tests/test_app.py',
+        titles: [{ kind: 'test', title: 'test_own_behavior', line: 1 }],
+      },
+    ],
+  });
+});
+
+test('extractTitles: 他関数にネストされた test_ 関数と、Test で始まらないクラスの test_ メソッドは現状拾ってしまう（既知の限界・回帰固定）', () => {
+  const src = [
+    'def test_outer():', // 1
+    '    def test_inner_helper():', // 2
+    '        assert True', // 3
+    '    test_inner_helper()', // 4
+    '', // 5
+    'class Helper:', // 6
+    '    def test_inside_non_test_class(self):', // 7
+    '        assert True', // 8
+  ].join('\n');
+
+  // pytest 自身はネストされた関数・Test で始まらないクラスのメソッドを収集しないが、
+  // このスクリプトは正規表現ベースで行頭パターンのみを見るため区別できない（AST 化はスコープ外）。
+  assert.deepEqual(extractTitles(src, 'tests/test_nested.py'), [
+    { kind: 'test', title: 'test_outer', line: 1 },
+    { kind: 'test', title: 'test_inner_helper', line: 2 },
+    { kind: 'test', title: 'test_inside_non_test_class', line: 7 },
+  ]);
+});

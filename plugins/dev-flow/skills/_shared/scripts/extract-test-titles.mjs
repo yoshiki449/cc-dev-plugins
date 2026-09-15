@@ -18,7 +18,10 @@ import { execFileSync } from 'node:child_process';
 // pytest の既定命名（python_files = test_*.py *_test.py）に合わせ、先頭 test_ と末尾 _test 両方を対象にする。
 // go は _test.go のみが規約（先頭 test_*.go という規約は無い）。
 const SPEC_RE = /\.(spec|test)\.(ts|tsx|js|jsx|mjs)$|_test\.go$|(?:^|\/)test_[^/]+\.py$|_test\.py$/i;
-const EXCLUDE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'vendor']);
+const EXCLUDE_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'vendor',
+  '.venv', 'venv', 'env', '__pycache__', '.tox', '.pytest_cache', 'site-packages',
+]);
 const MAX_DEPTH = 8;
 
 // describe / test / it の第1引数文字列リテラル。
@@ -27,8 +30,10 @@ const MAX_DEPTH = 8;
 const TITLE_RE =
   /\b(?:test\.)?(describe|test|it)((?:\.[\w$]+(?:\([^()]*\))?)*)\s*\(\s*(['"`])((?:\\.|(?!\3)[^\r\n\\])*)\3/g;
 
-// pytest の既定（python_classes = Test*, python_functions = test*）。
+// pytest の既定（python_classes = Test, python_functions = test_*）。
 // pytest.ini / pyproject の設定上書きは解析しない（スコープ拡大を避ける）。
+// 正規表現ベースのため、pytest が実際には収集しない他関数内へのネストや
+// Test で始まらないクラス内のメソッドも区別できず拾ってしまう（既知の限界。AST 化はスコープ外）。
 const PY_CLASS_RE = /^class\s+(Test\w+)\s*[:(]/gm;
 const PY_FUNC_RE = /^[ \t]*(?:async\s+)?def\s+(test_\w+)\s*\(/gm;
 
@@ -91,18 +96,22 @@ function newlineOffsetsOf(source) {
   return offsets;
 }
 
+function collectByRegex(regex, source, kind, newlineOffsets) {
+  const out = [];
+  regex.lastIndex = 0;
+  let m;
+  while ((m = regex.exec(source)) !== null) {
+    out.push({ kind, title: m[1], line: lineOf(newlineOffsets, m.index) });
+  }
+  return out;
+}
+
 function extractPythonTitles(source) {
   const newlineOffsets = newlineOffsetsOf(source);
-  const titles = [];
-  PY_CLASS_RE.lastIndex = 0;
-  let m;
-  while ((m = PY_CLASS_RE.exec(source)) !== null) {
-    titles.push({ kind: 'describe', title: m[1], line: lineOf(newlineOffsets, m.index) });
-  }
-  PY_FUNC_RE.lastIndex = 0;
-  while ((m = PY_FUNC_RE.exec(source)) !== null) {
-    titles.push({ kind: 'test', title: m[1], line: lineOf(newlineOffsets, m.index) });
-  }
+  const titles = [
+    ...collectByRegex(PY_CLASS_RE, source, 'describe', newlineOffsets),
+    ...collectByRegex(PY_FUNC_RE, source, 'test', newlineOffsets),
+  ];
   titles.sort((a, b) => a.line - b.line);
   return titles;
 }
