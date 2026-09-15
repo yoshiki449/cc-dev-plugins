@@ -84,8 +84,18 @@ task_npm() {
 
 # プリインストールのブラウザは、リポジトリの @playwright/test が要求する版と一致しない
 task_playwright() {
-    local repo=$1 dir=$2
-    [ -d "$repo/$dir/node_modules" ] || npm ci --prefix "$repo/$dir"
+    local repo=$1 dir=$2 state
+    state=$(state_dir "$repo")
+    # 依存の導入は npm 処理と同じロックと目印で済ませる。npm ci は node_modules を先に作ってから中身を
+    # 書くので、ディレクトリの有無で判断すると、並走中の npm ci の途中で npx が走り package.json を見失う
+    exec 8> "$state/npm-$dir.lock"
+    flock 8
+    if [ ! -e "$state/npm-$dir.done" ]; then
+        npm ci --prefix "$repo/$dir" || return 1
+        touch "$state/npm-$dir.done"
+        rm -f "$state/npm-$dir.failed"
+    fi
+    exec 8>&-
     (cd "$repo/$dir" && npx playwright install chromium chromium-headless-shell)
 }
 

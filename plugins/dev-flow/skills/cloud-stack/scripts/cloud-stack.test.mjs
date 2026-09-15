@@ -228,6 +228,39 @@ test('進行中の npm は二重に起動しない', async () => {
   assert.equal(calls(w).filter((x) => x === line).length, 1);
 });
 
+test('npm と E2E ブラウザが同じディレクトリなら、npm ci の完了を待ってからブラウザを入れる', async () => {
+  const w = makeWorld();
+  const repo = makeRepo(w.root, 'alpha', manifest({ npm: ['web'], playwright: ['web'] }));
+  // npm ci は node_modules を先に作ってから中身を書く。ディレクトリの有無だけで判断すると途中の状態で npx が走る
+  fs.mkdirSync(path.join(repo, 'web', 'node_modules'), { recursive: true });
+  fs.writeFileSync(path.join(w.stubs, 'npm-hold'), '');
+  run(w, ['prepare']);
+  const line = `npm ci --prefix ${repo}/web`;
+  assert.ok(await waitFor(() => calls(w).includes(line)));
+  await new Promise((res) => setTimeout(res, 500));
+  assert.equal(calls(w).filter((x) => x.startsWith('npx ')).length, 0, 'npm ci の途中でブラウザを入れ始めた');
+  fs.writeFileSync(path.join(w.stubs, 'npm-release'), '');
+  assert.ok(await waitFor(() => fs.existsSync(st(w, 'alpha', 'npm-web.done')) && fs.existsSync(st(w, 'alpha', 'playwright-web.done'))));
+  const c = calls(w);
+  assert.equal(c.filter((x) => x === line).length, 1, 'npm ci を二重に実行した');
+  assert.ok(c.indexOf(line) < c.findIndex((x) => x.startsWith('npx ')));
+});
+
+test('npm の処理が失敗していたら、E2E ブラウザの処理が npm ci をやり直してから入れる', async () => {
+  const w = makeWorld();
+  const repo = makeRepo(w.root, 'alpha', manifest({ npm: ['web'], playwright: ['web'] }));
+  fs.mkdirSync(path.join(w.state, 'alpha'), { recursive: true });
+  fs.writeFileSync(st(w, 'alpha', 'npm-web.failed'), '');
+  fs.mkdirSync(path.join(repo, 'web', 'node_modules'), { recursive: true });
+  const r = run(w, ['--task', repo, 'playwright:web']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync(st(w, 'alpha', 'playwright-web.done')));
+  const c = calls(w);
+  assert.ok(c.indexOf(`npm ci --prefix ${repo}/web`) >= 0 && c.indexOf(`npm ci --prefix ${repo}/web`) < c.findIndex((x) => x.startsWith('npx ')));
+  assert.ok(fs.existsSync(st(w, 'alpha', 'npm-web.done')));
+  assert.equal(fs.existsSync(st(w, 'alpha', 'npm-web.failed')), false);
+});
+
 // ---- up: CA 入りのクラウド用ビルド ----
 
 function blocksAfterFrom(text) {

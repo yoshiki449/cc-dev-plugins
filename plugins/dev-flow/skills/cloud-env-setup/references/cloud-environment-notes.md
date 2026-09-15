@@ -45,6 +45,7 @@ Setup script を混ぜずに済みます。
 | Docker ビルド | VM はプロキシの自己署名 CA 越しに外へ出るので、ビルドコンテナ内の pip / npm が `CERTIFICATE_VERIFY_FAILED` | `/root/.ccr/ca-bundle.crt` をビルドに渡す（SKILL.md の実行手順3） |
 | playwright MCP | セッション内で実行した `claude mcp list` は `.mcp.json` のサーバーを `⏸ Pending approval` と表示するが、セッション本体は承認なしで読み込んでおりツールは使える | 表示ではなく、ツールが実際に使えるかで確かめる |
 | MCP の起動 | セッション開始時に npx がその場でパッケージを取得し、ファイルが途中で切れて MCP が起動に失敗することがあった（起きる回と起きない回がある。そのセッションでは再接続されない） | 版を固定し、Setup script で事前に取得し、MCP の登録（Setup script のユーザー単位、またはリポジトリの `.mcp.json`）の `env` に `npm_config_prefer_offline=true` を付ける。修正後は3回続けて起動した |
+| Docker ビルドの apt / apk | 既定のリストに Debian と Alpine の配布元が無く、Debian 系イメージの `apt-get update` が 403 で落ちる | Allowed domains に `deb.debian.org`（Alpine なら `dl-cdn.alpinelinux.org`）を足す |
 | context7 MCP | 起動はするが、ツールを呼ぶと API の `context7.com` への CONNECT がプロキシに 403 で拒否される（既定の許可リストに無い） | Allowed domains に `context7.com` を足す |
 | 同名の MCP | Setup script がユーザー単位で登録した MCP と、リポジトリの `.mcp.json` に同名があると `claude mcp list` に重複の警告が出る。使われるのは1件で、ツールは動く | 動作に影響しないのでそのままでよい。消すならリポジトリの `.mcp.json` 側 |
 | Playwright | `/opt/pw-browsers` にプリインストールされたブラウザが、`@playwright/test` や playwright MCP の要求する版と違う | セッション初期化で `npx playwright install chromium chromium-headless-shell`、MCP は `npx @playwright/mcp@<版> install-browser chrome-for-testing` |
@@ -54,7 +55,7 @@ Setup script を混ぜずに済みます。
 既定の Trusted に無いドメインを使うときは Custom にします。**「Also include default list of common package managers」に
 チェックを入れないと、書いたドメインしか通らなくなります。** 足す候補は、Docker Hub の配信元
 `production.cloudfront.docker.com`、Playwright のブラウザ配布元（`cdn.playwright.dev` /
-`playwright.download.prss.microsoft.com`）、context7 の API（`context7.com`）、業務 SaaS の API です。
+`playwright.download.prss.microsoft.com`）、context7 の API（`context7.com`）、Debian / Alpine 系イメージのビルドで使う `deb.debian.org` / `dl-cdn.alpinelinux.org`、業務 SaaS の API です。既定のリストの Linux ディストリビューションは Ubuntu だけで、`python:*-slim` などの Debian 系イメージの `apt-get update` は 403 になります（Microsoft Container Registry は既定に入っています）。
 
 ## GitHub の認証
 

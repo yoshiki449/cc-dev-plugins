@@ -74,6 +74,7 @@ bash $S down <repo>
 
 - **本番用の Dockerfile と compose は変えない。** CA 入りの Dockerfile は `~/.cloud-stack/<repo>/` に生成され、上書き compose で差し替わる。ビルドの間だけ各コンテキストに `.cloud-stack-ca.crt` を置き、終わったら消す（そのクローンの `.git/info/exclude` にも足す）
 - CA が無い環境（ローカル）では、上書きを付けずに元の Dockerfile で起動する
+- Dockerfile が `apt-get` / `apk add` を使うなら、クラウド環境の Allowed domains に `deb.debian.org` / `dl-cdn.alpinelinux.org` が要る（既定のリストは Ubuntu だけ）。無いとビルドが 403 で落ちる
 - ホストのポートは、同じセッションの他のリポジトリと VM にプリインストールされたサービスと衝突しない値にする
 - `prepare` から重い処理（イメージのビルド、全依存の取得）を呼ばない。セッション開始を待たせる
 
