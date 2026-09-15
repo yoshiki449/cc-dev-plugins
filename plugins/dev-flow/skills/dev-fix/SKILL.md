@@ -25,7 +25,7 @@ Issue仕様との差異分析を起点に、修正方針の策定→実装→検
 
 ### F0.5. worktree 検証 ⚠ 必須（スキップ不可・中断条件あり）
 
-> **原則**: **worktree の中でしか修正コミットを作らない**。main clone や main/master ブランチ上で Edit/Write/コミットする前に必ずここで止める。過去に main 誤コミット事故が発生している（memory `bash-cwd-drift-in-worktree`）。
+> **原則**: **worktree の中でしか修正コミットを作らない**。main clone やベースブランチ（main/master/develop 等）上で Edit/Write/コミットする前に必ずここで止める。過去に main 誤コミット事故が発生している（memory `bash-cwd-drift-in-worktree`）。
 
 1. `pwd` と `git branch --show-current` で現在地を実測する（ターンをまたいだ直後は特に）
 2. `bash skills/_shared/scripts/ensure-worktree.sh` を実行し、status を確認する:
@@ -34,7 +34,7 @@ Issue仕様との差異分析を起点に、修正方針の策定→実装→検
 |---|---|
 | `ok` | そのまま F1 に進む |
 | `non_worktree_path` | worktree 内だが規約外パス。ユーザーに一言報告してそのまま F1 に進む（動作はする） |
-| `on_main_branch` / `flat_repo` | **中断**。ユーザーに以下を伝える: 「main/master 直上 or worktree 未作成のため修正できません。`/dev-setup` を実行して worktree を作成してから戻ってきてください。既に worktree が別ディレクトリにあれば絶対パスを教えてください（そこに cd してから再度 `/dev-fix`）」 |
+| `on_main_branch` / `flat_repo` | **中断**。ユーザーに以下を伝える: 「ベースブランチ（main/master/develop 等）直上 or worktree 未作成のため修正できません。`/dev-setup` を実行して worktree を作成してから戻ってきてください。既に worktree が別ディレクトリにあれば絶対パスを教えてください（そこに cd してから再度 `/dev-fix`）」 |
 | `not_a_repo` | 中断。ユーザーに repo 位置を確認 |
 
 3. 引継書に worktree 絶対パスが記録されているなら、`git rev-parse --show-toplevel` の結果と一致するかを照合する。ズレていれば **どちらが正しいかユーザーに確認するまで修正コミットを作らない**

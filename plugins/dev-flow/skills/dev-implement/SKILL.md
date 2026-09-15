@@ -64,7 +64,7 @@ adversarial-verifier は overlay の固定位置を自分で読む（実行時�
 
 ### Step 0.5: worktree 検証 ⚠ 必須（スキップ不可・中断条件あり）
 
-> **原則**: **worktree の中でしか実装コミットを作らない**。main clone や main/master ブランチ上で Edit/Write/コミットする前に必ずここで止める。過去に main 誤コミット事故が発生している（memory `bash-cwd-drift-in-worktree`）。
+> **原則**: **worktree の中でしか実装コミットを作らない**。main clone やベースブランチ（main/master/develop 等）上で Edit/Write/コミットする前に必ずここで止める。過去に main 誤コミット事故が発生している（memory `bash-cwd-drift-in-worktree`）。
 
 1. `pwd` と `git branch --show-current` で現在地を実測する（ターンをまたいだ直後は特に）
 2. `bash skills/_shared/scripts/ensure-worktree.sh` を実行し、status を確認する:
@@ -73,7 +73,7 @@ adversarial-verifier は overlay の固定位置を自分で読む（実行時�
 |---|---|
 | `ok` | そのまま Step 1 に進む |
 | `non_worktree_path` | worktree 内だが規約外パス。ユーザーに一言報告してそのまま Step 1 に進む（動作はする） |
-| `on_main_branch` / `flat_repo` | **中断**。ユーザーに以下を伝える: 「main/master 直上 or worktree 未作成のため実装できません。`/dev-setup` を実行して worktree を作成してから戻ってきてください。既に worktree が別ディレクトリにあれば絶対パスを教えてください（そこに cd してから再度 `/dev-implement`）」 |
+| `on_main_branch` / `flat_repo` | **中断**。ユーザーに以下を伝える: 「ベースブランチ（main/master/develop 等）直上 or worktree 未作成のため実装できません。`/dev-setup` を実行して worktree を作成してから戻ってきてください。既に worktree が別ディレクトリにあれば絶対パスを教えてください（そこに cd してから再度 `/dev-implement`）」 |
 | `not_a_repo` | 中断。ユーザーに repo 位置を確認 |
 
 3. 引継書に worktree 絶対パスが記録されているなら、`git rev-parse --show-toplevel` の結果と一致するかを照合する。ズレていれば **どちらが正しいかユーザーに確認するまで実装コミットを作らない**
