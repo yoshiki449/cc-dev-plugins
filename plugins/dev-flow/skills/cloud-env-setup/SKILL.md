@@ -67,7 +67,7 @@ VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd�
    - クラウドで MCP が使えるかは、セッション内の `claude mcp list` の表示（`⏸ Pending approval`）ではなく、ツールを実際に呼んで確かめる
 5. 実行後、必ず以下をユーザーに明示する（このスキルの存在意義そのものなので省略しない）:
    - Setup script は claude.ai/code の UI への手動貼り付けが必要（API/CLI からは書けない）。plugin はこれを貼らないと入らない
-   - Network access は Custom にし「既定のリストを含める」にチェックする。既定には Docker Hub のイメージ本体の配信元 `production.cloudfront.docker.com`・業務 SaaS・Playwright のブラウザ配布元が入っていない
+   - Network access は Custom にし「既定のリストを含める」にチェックする。既定には Docker Hub のイメージ本体の配信元 `production.cloudfront.docker.com`・業務 SaaS・Playwright のブラウザ配布元・context7 の API（`context7.com`）が入っていない
    - 環境変数欄の値は、その環境を使える人と Claude から読める。ローカル開発用の秘密はセッションごとに生成する
    - 変更をコミットして push するまで、クラウドには何も届かない
 

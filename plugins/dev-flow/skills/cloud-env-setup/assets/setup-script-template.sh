@@ -44,6 +44,7 @@ XML
 # ファイルが途中で切れて MCP が起動に失敗することがあり、そのセッションでは再接続されない。
 # 版を固定し、起動前に取得し、npm_config_prefer_offline で取得済みのキャッシュから起動させる
 # （付けないと npx はキャッシュがあってもレジストリへ問い合わせる）。-e はサーバー名の後ろに置く
+# context7 のツールは context7.com の API を呼ぶ。既定の許可リストに無いので Allowed domains に足す
 {
   claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright/mcp@0.0.80 --caps=devtools --output-dir=/tmp/playwright-mcp
   claude mcp add --scope user context7 -e npm_config_prefer_offline=true -- npx -y @upstash/context7-mcp@4.1.0
