@@ -149,3 +149,10 @@ test('Setup script のテンプレートは日本語のときに Noto Sans CJK J
   const cache = out.indexOf('fc-cache -f');
   assert.ok(install >= 0 && cache > install, 'フォントを入れた後にキャッシュを作り直していない');
 });
+
+test('Setup script のテンプレートは MCP パッケージを起動前に取得する例を持つ', () => {
+  // セッション開始時に npx がその場で取得すると、ファイルが途中で切れて MCP が起動に失敗することがあった
+  const stdout = apply(tempRepo()).stdout;
+  const [, body = ''] = stdout.split(/^-{20,}$/m);
+  assert.match(body, /^# \( for pkg in <\.mcp\.json に書いたパッケージ@版> \.\.\.; do timeout \d+ npx -y "\$pkg" --version < \/dev\/null; done \) > \/opt\/setup-log\/mcp\.log 2>&1 \|\| true &$/m);
+});

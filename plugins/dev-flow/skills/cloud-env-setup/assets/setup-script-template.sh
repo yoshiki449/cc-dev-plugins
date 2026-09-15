@@ -47,5 +47,12 @@ XML
 # 作業ディレクトリに依存しないよう、compose ファイルは読まずにイメージ名を並べる
 # ( for img in <イメージ名:タグ> ...; do docker pull "$img"; done ) > /opt/setup-log/docker.log 2>&1 || true &
 
+# .mcp.json に npx で起動する MCP があるリポジトリ: パッケージを Claude の起動前に取得しておく
+# ⚠ セッション開始時に npx がその場で取得すると、ファイルが途中で切れて MCP が起動に失敗することがあり、
+#    そのセッションでは再接続されない。版は .mcp.json と揃え、.mcp.json 側の各サーバーに
+#    "env": {"npm_config_prefer_offline": "true"} を付けて取得済みのキャッシュから起動させる
+#    （付けないと npx はキャッシュがあってもレジストリへ問い合わせ、その場で取得し直す）
+# ( for pkg in <.mcp.json に書いたパッケージ@版> ...; do timeout 180 npx -y "$pkg" --version < /dev/null; done ) > /opt/setup-log/mcp.log 2>&1 || true &
+
 wait
 echo "setup script done"
