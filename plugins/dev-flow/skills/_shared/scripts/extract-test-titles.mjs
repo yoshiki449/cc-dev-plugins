@@ -15,7 +15,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const SPEC_RE = /\.(spec|test)\.(ts|tsx|js|jsx|mjs)$|_test\.(go|py)$/i;
+// pytest の既定命名（python_files = test_*.py *_test.py）に合わせ、先頭 test_ と末尾 _test 両方を対象にする。
+// go は _test.go のみが規約（先頭 test_*.go という規約は無い）。
+const SPEC_RE = /\.(spec|test)\.(ts|tsx|js|jsx|mjs)$|_test\.go$|(?:^|\/)test_[^/]+\.py$|_test\.py$/i;
 const EXCLUDE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'vendor']);
 const MAX_DEPTH = 8;
 
@@ -24,6 +26,11 @@ const MAX_DEPTH = 8;
 // - `.only` `.skip` `.each([...])` 等の修飾子つきに対応（`.each` は引数を伴う）
 const TITLE_RE =
   /\b(?:test\.)?(describe|test|it)((?:\.[\w$]+(?:\([^()]*\))?)*)\s*\(\s*(['"`])((?:\\.|(?!\3)[^\r\n\\])*)\3/g;
+
+// pytest の既定（python_classes = Test*, python_functions = test*）。
+// pytest.ini / pyproject の設定上書きは解析しない（スコープ拡大を避ける）。
+const PY_CLASS_RE = /^class\s+(Test\w+)\s*[:(]/gm;
+const PY_FUNC_RE = /^[ \t]*(?:async\s+)?def\s+(test_\w+)\s*\(/gm;
 
 function parseArgs(argv) {
   const out = { repo: null, diff: null };
@@ -76,11 +83,38 @@ function lineOf(newlineOffsets, index) {
   return lo + 1;
 }
 
-export function extractTitles(source) {
-  const newlineOffsets = [];
+function newlineOffsetsOf(source) {
+  const offsets = [];
   for (let i = 0; i < source.length; i += 1) {
-    if (source[i] === '\n') newlineOffsets.push(i);
+    if (source[i] === '\n') offsets.push(i);
   }
+  return offsets;
+}
+
+function extractPythonTitles(source) {
+  const newlineOffsets = newlineOffsetsOf(source);
+  const titles = [];
+  PY_CLASS_RE.lastIndex = 0;
+  let m;
+  while ((m = PY_CLASS_RE.exec(source)) !== null) {
+    titles.push({ kind: 'describe', title: m[1], line: lineOf(newlineOffsets, m.index) });
+  }
+  PY_FUNC_RE.lastIndex = 0;
+  while ((m = PY_FUNC_RE.exec(source)) !== null) {
+    titles.push({ kind: 'test', title: m[1], line: lineOf(newlineOffsets, m.index) });
+  }
+  titles.sort((a, b) => a.line - b.line);
+  return titles;
+}
+
+function isPythonFile(filename) {
+  return /\.py$/i.test(filename || '');
+}
+
+export function extractTitles(source, filename) {
+  if (isPythonFile(filename)) return extractPythonTitles(source);
+
+  const newlineOffsets = newlineOffsetsOf(source);
   const titles = [];
   TITLE_RE.lastIndex = 0;
   let m;
@@ -125,9 +159,10 @@ function main() {
     } catch (_err) {
       continue;
     }
-    const titles = extractTitles(source);
+    const relFile = path.relative(repo, full).split(path.sep).join('/');
+    const titles = extractTitles(source, relFile);
     if (titles.length === 0) continue;
-    files.push({ file: path.relative(repo, full).split(path.sep).join('/'), titles });
+    files.push({ file: relFile, titles });
   }
 
   if (files.length === 0) {

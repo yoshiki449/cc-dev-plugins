@@ -98,3 +98,105 @@ test('CLI: symlink 経由で起動しても main() が走る（無音 exit 0 の
 test('CLI: --repo 未指定は exit 2', () => {
   assert.throws(() => runCli([], { stdio: 'pipe' }), (err) => err.status === 2);
 });
+
+test('extractTitles: pytest の def test_xxx() をトップレベル関数として抽出する', () => {
+  const src = [
+    'import pytest', // 1
+    '', // 2
+    'def test_forgot_password_success(client):', // 3
+    '    assert True', // 4
+    '', // 5
+    'async def test_async_flow(client):', // 6
+    '    assert True', // 7
+  ].join('\n');
+
+  assert.deepEqual(extractTitles(src, 'tests/test_password_reset.py'), [
+    { kind: 'test', title: 'test_forgot_password_success', line: 3 },
+    { kind: 'test', title: 'test_async_flow', line: 6 },
+  ]);
+});
+
+test('extractTitles: pytest の class TestXxx 配下の def test_yyy をメソッドとして抽出する', () => {
+  const src = [
+    'class TestBuildFieldErrors:', // 1
+    '    def test_returns_empty_list(self):', // 2
+    '        assert True', // 3
+    '', // 4
+    '    def test_returns_error(self, client):', // 5
+    '        assert True', // 6
+    '', // 7
+    'class TestAppError(unittest.TestCase):', // 8
+    '    def test_message(self):', // 9
+    '        assert True', // 10
+  ].join('\n');
+
+  assert.deepEqual(extractTitles(src, 'tests/test_error_handlers.py'), [
+    { kind: 'describe', title: 'TestBuildFieldErrors', line: 1 },
+    { kind: 'test', title: 'test_returns_empty_list', line: 2 },
+    { kind: 'test', title: 'test_returns_error', line: 5 },
+    { kind: 'describe', title: 'TestAppError', line: 8 },
+    { kind: 'test', title: 'test_message', line: 9 },
+  ]);
+});
+
+test('extractTitles: filename 未指定・.py 以外は従来どおり describe/test/it 構文を使う（後方互換）', () => {
+  assert.deepEqual(extractTitles("test('従来どおり', () => {});"), [
+    { kind: 'test', title: '従来どおり', line: 1 },
+  ]);
+  assert.deepEqual(extractTitles("test('従来どおり', () => {});", 'e2e/login.spec.ts'), [
+    { kind: 'test', title: '従来どおり', line: 1 },
+  ]);
+});
+
+test('extractTitles: .py でも def test_ / class Test に該当しなければ拾わない', () => {
+  assert.deepEqual(extractTitles('def helper():\n    pass\n\nclass Helper:\n    pass', 'tests/conftest.py'), []);
+});
+
+test('CLI: 先頭 test_ 形式の pytest ファイル（全走査）を拾う', () => {
+  const repo = mkTmp();
+  fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'tests', 'test_auth.py'),
+    'def test_login_success(client):\n    assert True\n',
+  );
+  // pytest の対象外: test_ で始まらないヘルパーファイル
+  fs.writeFileSync(path.join(repo, 'tests', 'conftest.py'), 'def fixture_helper():\n    pass\n');
+
+  const out = JSON.parse(runCli(['--repo', repo]));
+  assert.deepEqual(out, {
+    files: [
+      {
+        file: 'tests/test_auth.py',
+        titles: [{ kind: 'test', title: 'test_login_success', line: 1 }],
+      },
+    ],
+  });
+});
+
+test('CLI: --diff 指定でも先頭 test_ 形式の pytest ファイルを拾う', () => {
+  const repo = mkTmp();
+  execFileSync('git', ['init', '--quiet'], { cwd: repo });
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+  execFileSync('git', ['config', 'user.name', 'test'], { cwd: repo });
+  fs.writeFileSync(path.join(repo, 'README.md'), 'init');
+  execFileSync('git', ['add', '.'], { cwd: repo });
+  execFileSync('git', ['commit', '--quiet', '-m', 'init'], { cwd: repo });
+
+  fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'tests', 'test_new_feature.py'),
+    'def test_new_behavior(client):\n    assert True\n',
+  );
+  execFileSync('git', ['add', '.'], { cwd: repo });
+  execFileSync('git', ['commit', '--quiet', '-m', 'add test'], { cwd: repo });
+
+  const out = JSON.parse(runCli(['--repo', repo, '--diff', 'HEAD~1...HEAD']));
+  assert.deepEqual(out, {
+    files: [
+      {
+        file: 'tests/test_new_feature.py',
+        titles: [{ kind: 'test', title: 'test_new_behavior', line: 1 }],
+      },
+    ],
+  });
+});

@@ -51,8 +51,8 @@ Issue 本文と git diff を突き合わせ、要件の達成度を**1枚のマ�
 ### 3. テストの検出
 
 各要件について:
-1. テストファイル（`*.spec.ts` / `*.test.ts` / `*_test.go` 等）の差分を検索
-2. 要件キーワードを含む `describe` / `test` / `it` ブロックを特定
+1. テストファイル（`*.spec.ts` / `*.test.ts` / `*_test.go` / **`test_*.py`（pytest の既定は先頭 `test_`。`tests/` 配下に多い）** 等）の差分を検索
+2. 要件キーワードを含む `describe` / `test` / `it` ブロック、または pytest の `def test_xxx()` 関数・`class TestXxx:` クラスを特定
 3. **テストあり**: 該当テストファイル＋行範囲
 4. **テストなし**: 該当差分なし
 
