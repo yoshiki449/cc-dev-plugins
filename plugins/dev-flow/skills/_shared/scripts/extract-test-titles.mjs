@@ -18,9 +18,11 @@ import { execFileSync } from 'node:child_process';
 // pytest の既定命名（python_files = test_*.py *_test.py）に合わせ、先頭 test_ と末尾 _test 両方を対象にする。
 // go は _test.go のみが規約（先頭 test_*.go という規約は無い）。
 const SPEC_RE = /\.(spec|test)\.(ts|tsx|js|jsx|mjs)$|_test\.go$|(?:^|\/)test_[^/]+\.py$|_test\.py$/i;
+// 'env' は Python 専用のディレクトリ名ではない（Node.js プロジェクトの環境設定ディレクトリ等
+// でも使われる）ため除外しない。仮想環境の除外は .venv / venv でカバーする。
 const EXCLUDE_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'vendor',
-  '.venv', 'venv', 'env', '__pycache__', '.tox', '.pytest_cache', 'site-packages',
+  '.venv', 'venv', '__pycache__', '.tox', '.pytest_cache', 'site-packages',
 ]);
 const MAX_DEPTH = 8;
 
@@ -33,7 +35,8 @@ const TITLE_RE =
 // pytest の既定（python_classes = Test, python_functions = test_*）。
 // pytest.ini / pyproject の設定上書きは解析しない（スコープ拡大を避ける）。
 // 正規表現ベースのため、pytest が実際には収集しない他関数内へのネストや
-// Test で始まらないクラス内のメソッドも区別できず拾ってしまう（既知の限界。AST 化はスコープ外）。
+// Test で始まらないクラス内のメソッド、docstring/コメント内のコード例も区別できず拾って
+// しまう（既知の限界。AST 化はスコープ外。JS/TS 側の TITLE_RE も同種の限界を持つ）。
 const PY_CLASS_RE = /^class\s+(Test\w+)\s*[:(]/gm;
 const PY_FUNC_RE = /^[ \t]*(?:async\s+)?def\s+(test_\w+)\s*\(/gm;
 

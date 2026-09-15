@@ -236,6 +236,60 @@ test('CLI: 全走査で Python 仮想環境・キャッシュ配下のベンダ�
   });
 });
 
+test('CLI: 全走査で .tox / .pytest_cache / site-packages 配下のベンダーテストを拾わない', () => {
+  const repo = mkTmp();
+  fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'tests', 'test_app.py'),
+    'def test_own_behavior(client):\n    assert True\n',
+  );
+
+  fs.mkdirSync(path.join(repo, '.tox', 'py311', 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, '.tox', 'py311', 'tests', 'test_tox.py'),
+    'def test_tox_should_not_be_collected():\n    assert True\n',
+  );
+  fs.mkdirSync(path.join(repo, '.pytest_cache', 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, '.pytest_cache', 'tests', 'test_cache2.py'),
+    'def test_pytest_cache_should_not_be_collected():\n    assert True\n',
+  );
+  fs.mkdirSync(path.join(repo, 'site-packages', 'pkg', 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'site-packages', 'pkg', 'tests', 'test_pkg.py'),
+    'def test_site_packages_should_not_be_collected():\n    assert True\n',
+  );
+
+  const out = JSON.parse(runCli(['--repo', repo]));
+  assert.deepEqual(out, {
+    files: [
+      {
+        file: 'tests/test_app.py',
+        titles: [{ kind: 'test', title: 'test_own_behavior', line: 1 }],
+      },
+    ],
+  });
+});
+
+test('CLI: 全走査で env/ は除外しない（Python 専用ディレクトリ名ではないため、実在テストを取りこぼさない）', () => {
+  const repo = mkTmp();
+  fs.mkdirSync(path.join(repo, 'env', 'tests'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, 'env', 'tests', 'test_env_config.py'),
+    'def test_env_config_should_be_collected():\n    assert True\n',
+  );
+
+  const out = JSON.parse(runCli(['--repo', repo]));
+  assert.deepEqual(out, {
+    files: [
+      {
+        file: 'env/tests/test_env_config.py',
+        titles: [{ kind: 'test', title: 'test_env_config_should_be_collected', line: 1 }],
+      },
+    ],
+  });
+});
+
 test('extractTitles: 他関数にネストされた test_ 関数と、Test で始まらないクラスの test_ メソッドは現状拾ってしまう（既知の限界・回帰固定）', () => {
   const src = [
     'def test_outer():', // 1
@@ -254,5 +308,24 @@ test('extractTitles: 他関数にネストされた test_ 関数と、Test で�
     { kind: 'test', title: 'test_outer', line: 1 },
     { kind: 'test', title: 'test_inner_helper', line: 2 },
     { kind: 'test', title: 'test_inside_non_test_class', line: 7 },
+  ]);
+});
+
+test('extractTitles: docstring 内のコード例は現状拾ってしまう（既知の限界・回帰固定。JS/TS 側の TITLE_RE も同様にコメント内の test(...) を拾う既存の設計限界と同種）', () => {
+  const src = [
+    '"""', // 1
+    '使い方の例:', // 2
+    '', // 3
+    'def test_example_in_docstring():', // 4
+    '    assert True', // 5
+    '"""', // 6
+    '', // 7
+    'def test_real_one():', // 8
+    '    assert True', // 9
+  ].join('\n');
+
+  assert.deepEqual(extractTitles(src, 'tests/test_x.py'), [
+    { kind: 'test', title: 'test_example_in_docstring', line: 4 },
+    { kind: 'test', title: 'test_real_one', line: 8 },
   ]);
 });
