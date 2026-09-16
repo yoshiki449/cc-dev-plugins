@@ -65,5 +65,9 @@ XML
 # リポジトリの .mcp.json にも npx で起動する MCP を書く場合（1リポジトリだけのセッション・ローカル用）は、
 # 版を上の登録と揃え、各サーバーに "env": {"npm_config_prefer_offline": "true"} を付ける
 
+# 組織固有のQC観点(overlay)をクラウドにも持ち込む場合:
+#   ローカルで bash <skill-dir>/scripts/render_qc_overlay_snippet.sh を実行し、
+#   出力をこの直前（plugin 導入ブロックの後）に貼る（中身は社内資産なのでテンプレートには書けない）
+
 wait
 echo "setup script done"

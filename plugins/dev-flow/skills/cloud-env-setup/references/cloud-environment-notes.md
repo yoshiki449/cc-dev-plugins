@@ -14,6 +14,7 @@
 | ユーザー設定でだけ有効にした plugin | 届かない | Setup script で入れる |
 | `claude mcp add` で user / local scope に足した MCP | 届かない | `--scope project` で `.mcp.json` に書いてコミットする |
 | `.gitignore` 済みのファイル（`.env` など） | 届かない | `scripts/cloud-session-init.sh` でセッションごとに作る |
+| `~/.cc-plugins/overlay/qc/`（組織固有の QC 観点） | 届かない（`$HOME` はセッションごとにリセットされる） | Setup script に埋め込む（`cloud-env-setup` の `scripts/render_qc_overlay_snippet.sh` で生成） |
 
 ## Setup script は手動貼り付けが必要
 
@@ -66,7 +67,11 @@ GitHub への通信は専用のプロキシが認証を差し込み、`GH_TOKEN`
 ## 秘密の値の渡し方
 
 - **環境変数欄:** `.env` 形式で書くと、セッション開始時に普通の環境変数として入ります。
-  その環境を使える人と、Claude が実行するコマンドからは値が読めます。Setup script の実行中は使えません
+  その環境を使える人と、Claude が実行するコマンドからは値が読めます。**Setup script の実行中は
+  使えません**（2026-09-16、使い捨て環境で実機確認済み。`$VAR` の展開結果も `env` の出力も空だった）
+- **ファイルの中身をまるごと渡したいとき（QC overlay 等）:** 環境変数は Setup script の段階で
+  読めないので、値ではなく中身そのものを `cat > <path> <<'EOF' ... EOF` の形で Setup script に
+  埋め込む。`cloud-env-setup` の `scripts/render_qc_overlay_snippet.sh` がこの形を生成する
 - **API credentials（Pro / Max のみ）:** リクエストヘッダーで送る API キーを、Claude から隠したまま
   指定ホストへのリクエストに付けられます。OAuth のクライアントシークレットのように本文で送る値は対象外です
 - ローカル開発用に作っただけのパスワードや署名鍵は、渡さずにセッションごとに生成するほうが安全です

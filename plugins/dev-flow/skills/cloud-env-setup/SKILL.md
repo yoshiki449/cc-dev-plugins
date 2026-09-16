@@ -45,6 +45,11 @@ plugin の読み込みはセッション起動時に1回だけなので、Sessio
 | 環境変数 | **届かない** | 届く |
 | 時間の目安 | 約5分以内（超えるとキャッシュが作れない） | セッション開始を待たせるので、重い処理はバックグラウンドに回す |
 
+Setup script が環境変数を読めないことは、2026-09-16 に使い捨て環境で実機確認済み（`$VAR` の展開結果も
+`env` の出力も空。過去の記述は公式ドキュメント由来で未検証のまま残っていたため、疑わしいと指摘されて
+再確認した）。overlay など値を渡したいものは、下の「QC 観点をクラウドにも持ち込む場合」のように
+中身ごと Setup script に埋め込む。
+
 VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd・compose 込み）/ Python（pip・uv・poetry）/ Node 20-22 がある。**`gh` はドキュメントに反して入っていない**ので Setup script で apt から入れる（`GH_TOKEN` はプロキシが差し込む）。入らないときの GitHub 操作は GitHub MCP（`mcp__github__*`）を使う。Playwright のブラウザは `/opt/pw-browsers` にあるが、リポジトリの `@playwright/test` や playwright MCP の要求する版とずれるので、セッション初期化で `npx playwright install` する。
 
 ### リポジトリ固有の初期化は `scripts/cloud-session-init.sh` に置く
@@ -71,9 +76,30 @@ VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd�
    - 環境変数欄の値は、その環境を使える人と Claude から読める。ローカル開発用の秘密はセッションごとに生成する
    - 変更をコミットして push するまで、クラウドには何も届かない
 
+### 組織固有の QC 観点(overlay)をクラウドにも持ち込む場合
+
+dev-flow の QC overlay（`skills/_shared/reference/qc-overlay.md`）は `~/.cc-plugins/overlay/qc/` を
+読むが、クラウド VM は `$HOME` がセッションごとにリセットされるため、ローカル用の配置（組織側 plugin の
+`install_overlay.py` 等）は届かない。**環境変数と同様、Setup script の実行中には環境変数が読めない**
+（2026-09 実測。`references/cloud-environment-notes.md` 参照）ため、値を渡すのではなく、
+overlay ファイルの中身そのものを Setup script に埋め込む。
+
+1. ローカルで `bash <skill-dir>/scripts/render_qc_overlay_snippet.sh` を実行する
+2. 出力を Setup script の plugin 導入ブロックの後・末尾の `wait` の前に貼る
+3. 貼った後、実際のクラウドセッションで dev-flow の `qc-overlay.sh` を7フェーズ分実行し、すべて
+   `overlay_applied=1` になることを確認する（配置しただけでは検証にならない。ローカルの
+   `qc-overlay-install` の検証手順と同じ発想）
+4. overlay の内容を更新したら、render し直して貼り直す（貼り直し自体が Setup script の変更なので、
+   次回起動時にキャッシュが作り直され反映される）
+
+Setup script は環境1つを複数リポジトリで使い回すので、対象の業務リポジトリが同じ環境を
+使っていれば、この貼り付けは1回で全リポジトリに効く。
+
 ## ファイル構成
 
 - `scripts/apply_cloud_env_setup.sh` — メインロジック（bash + jq、冪等）
 - `scripts/apply_cloud_env_setup.test.mjs` — `node --test` 用のテスト
+- `scripts/render_qc_overlay_snippet.sh` — QC overlay を Setup script 用の heredoc スニペットにする
+- `scripts/render_qc_overlay_snippet.test.mjs` — `node --test` 用のテスト
 - `assets/setup-script-template.sh` — Setup script 欄に貼るテンプレート本体
 - `references/cloud-environment-notes.md` — 実行後にそのまま提示する注意事項（届くもの・届かないもの、秘密の渡し方）
