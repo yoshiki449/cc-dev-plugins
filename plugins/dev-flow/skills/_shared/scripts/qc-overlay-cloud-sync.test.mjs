@@ -36,7 +36,7 @@ function run({ root, home, subpath, destDir }) {
   return spawnSync('bash', [SCRIPT], { encoding: 'utf8', env });
 }
 
-const SUBPATH = 'plugins/proseeds-overlay/overlay/qc';
+const SUBPATH = 'plugins/acme-overlay/overlay/qc';
 
 test('CC_PLUGINS_OVERLAY_SOURCE_SUBPATH 未設定なら何もせず exit 0', () => {
   const root = tempDir('qc-sync-off-');

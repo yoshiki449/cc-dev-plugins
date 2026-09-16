@@ -108,7 +108,7 @@ overlay 無しのまま素通りしてしまう）。
 1. claude.ai の環境設定で、overlay を含むリポジトリ（例: cc-plugins）を対象の業務リポジトリと
    同じセッションに付ける
 2. 「環境変数」欄に `CC_PLUGINS_OVERLAY_SOURCE_SUBPATH=<リポジトリルートからoverlayまでの相対パス>`
-   （例: `plugins/proseeds-overlay/overlay/qc`）を設定する
+   （例: `plugins/acme-overlay/overlay/qc`）を設定する
 3. dev-flow の SessionStart hook（`hooks/cloud-session-start.sh`）が毎セッション開始時に
    `_shared/scripts/qc-overlay-cloud-sync.sh` を呼び、セッションに付いた各リポジトリの中から
    このサブパスを持つものを探して `~/.cc-plugins/overlay/qc/` へコピーする

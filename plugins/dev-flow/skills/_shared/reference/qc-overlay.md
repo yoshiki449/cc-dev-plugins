@@ -14,7 +14,7 @@ dev-flow は汎用の開発フローであり、**組織ごとの品質観点（
     届かない。届け方は2通り: ①`cloud-env-setup` の `scripts/render_qc_overlay_snippet.sh` で
     Setup script に埋め込む（手動貼り付け、常設リポジトリ不要）②overlay を含む別リポジトリを
     セッションに付けたうえで環境変数 `CC_PLUGINS_OVERLAY_SOURCE_SUBPATH`（例:
-    `plugins/proseeds-overlay/overlay/qc`）を設定し、`_shared/scripts/qc-overlay-cloud-sync.sh`
+    `plugins/acme-overlay/overlay/qc`）を設定し、`_shared/scripts/qc-overlay-cloud-sync.sh`
     が SessionStart hook から自動で同期する（貼り直し不要・常に最新だが、そのリポジトリを
     毎回セッションに付ける必要がある）。使い分けは `cloud-env-setup` の SKILL.md 参照
 - **出力境界**: overlay を参照する各スキル／エージェントは、次の1文を自分の節に
