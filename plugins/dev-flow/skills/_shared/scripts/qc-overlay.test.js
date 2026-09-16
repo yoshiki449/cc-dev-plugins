@@ -307,6 +307,7 @@ const ALLOWED_REFERENCES = [
   'advisor-policy.md',
   'core-flow.md',
   'handover-template.md',
+  'qa-cause-classification.md',
   'qc-overlay.md',
   'requirement-elicitation.md',
   'scope-discipline.md',
