@@ -161,8 +161,12 @@ exclude_locally() {
 }
 
 compose_args() {
-    local repo=$1 state=$2 f
+    local repo=$1 state=$2 f envfile
     COMPOSE=(docker compose --project-directory "$repo")
+    # `environment: - VAR`（値なし）形式のサービスは、シェルの環境変数か --env-file からしか
+    # 値が入らない。run_commands の子シェルで export しても、ここは別プロセスなので届かない
+    envfile=$(mf "$repo" '.compose.env_file // empty')
+    [ -n "$envfile" ] && [ -f "$repo/$envfile" ] && COMPOSE+=(--env-file "$repo/$envfile")
     while IFS= read -r f; do
         COMPOSE+=(-f "$repo/$f")
     done < <(mf "$repo" '(.compose.files // [])[]')

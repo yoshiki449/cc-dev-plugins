@@ -30,7 +30,7 @@ description: Claude Code のクラウドセッション（claude.ai/code・`clau
 
 ユーザー設定（`~/.claude/settings.json`）の plugin はクラウドに届かない。公式ドキュメントはリポジトリの `.claude/settings.json` に `extraKnownMarketplaces` と `enabledPlugins` を書けば入るとしているが、実測では入らない（起動時のインストーラが `no marketplaces declared` で何もせず、宣言は `marketplace not registered` で捨てられる）。
 
-plugin の読み込みはセッション起動時に1回だけなので、SessionStart hook から入れてもそのセッションには間に合わない。**Claude の起動前に走る Setup script で `claude plugin marketplace add` と `claude plugin install --scope user` を実行すると、そのセッションから使える**（Setup script の時点で `claude` コマンドはある）。テンプレートは cc-dev-plugins の `dev-flow` / `poc-flow` / `git-secret-guard` を入れる。`cc-meta` は `~/.cc-plugins/.env` が無いと止まるので入れない。
+plugin の読み込みはセッション起動時に1回だけなので、SessionStart hook から入れてもそのセッションには間に合わない。**Claude の起動前に走る Setup script で `claude plugin marketplace add` と `claude plugin install --scope user` を実行すると、そのセッションから使える**（Setup script の時点で `claude` コマンドはある）。`install` は既に入っていれば何もしないので、直後に `claude plugin marketplace update` と `claude plugin update` も呼ぶ（呼ばないと、dev-flow を新しい版に push しても、この環境の Setup script が既に一度走っていれば古い版のまま止まる。2026-09 実測）。テンプレートは cc-dev-plugins の `dev-flow` / `poc-flow` / `git-secret-guard` を入れる。`cc-meta` は `~/.cc-plugins/.env` が無いと止まるので入れない。
 
 このスキルはリポジトリに plugin 宣言を書かない。書くとクラウドでは効かないうえ、Setup script で入れた分と user・project の二重に出る。利用者が既に書いている宣言は消さない。
 

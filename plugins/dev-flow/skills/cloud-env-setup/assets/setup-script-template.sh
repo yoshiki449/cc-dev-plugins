@@ -11,10 +11,17 @@ mkdir -p /opt/setup-log
 # plugin の読み込みはセッション起動時に1回だけなので、SessionStart hook から入れても間に合わない。
 # Claude の起動前に走るここで入れると、そのセッションから使える。
 # cc-meta は ~/.cc-plugins/.env が無いと止まるので入れない。
+#
+# install は「無ければ入れる」だけで、既に入っていれば何もしない（marketplace の最新コミットを
+# 追わない）。marketplace 自体も add が account 単位で永続するらしく、この環境のキャッシュを
+# 作り直しても marketplace update／plugin update を呼ばない限り古い版のまま止まっていた
+# （2026-09 実測）。install の直後に必ず update も呼ぶ
 {
   claude plugin marketplace add https://github.com/yoshiki449/cc-dev-plugins.git
+  claude plugin marketplace update cc-dev-plugins
   for p in dev-flow poc-flow git-secret-guard; do
     claude plugin install "$p@cc-dev-plugins" --scope user
+    claude plugin update "$p@cc-dev-plugins"
   done
 } > /opt/setup-log/plugin.log 2>&1 || true
 
@@ -45,8 +52,10 @@ XML
 # 版を固定し、起動前に取得し、npm_config_prefer_offline で取得済みのキャッシュから起動させる
 # （付けないと npx はキャッシュがあってもレジストリへ問い合わせる）。-e はサーバー名の後ろに置く
 # context7 のツールは context7.com の API を呼ぶ。既定の許可リストに無いので Allowed domains に足す
+# --ignore-https-errors は自己署名証明書のリポジトリ（LB を自前で持つ等）向け。ローカルの
+# CA を信頼させる手立てが無いので、証明書は無視する運用にする。プレーンな HTTP のリポジトリには影響しない
 {
-  claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright/mcp@0.0.80 --caps=devtools --output-dir=/tmp/playwright-mcp
+  claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright/mcp@0.0.80 --caps=devtools --ignore-https-errors --output-dir=/tmp/playwright-mcp
   claude mcp add --scope user context7 -e npm_config_prefer_offline=true -- npx -y @upstash/context7-mcp@4.1.0
   timeout 180 npx -y @playwright/mcp@0.0.80 --version < /dev/null
   timeout 180 npx -y @upstash/context7-mcp@4.1.0 --version < /dev/null

@@ -55,6 +55,19 @@ test('Setup script のテンプレートが Claude 起動前に marketplace を�
   assert.doesNotMatch(out, /cc-meta/);
 });
 
+test('Setup script のテンプレートは marketplace と plugin を install の後に update まで呼ぶ', () => {
+  // install は「無ければ入れる」だけで、既に入っていれば marketplace の最新コミットを追わない
+  // （2026-09 実測）。install の直後に update を呼び、既存の環境でも最新を取りにいく
+  const out = templateCode(apply(tempRepo()).stdout);
+  const marketplaceUpdateIdx = out.search(/^\s*claude plugin marketplace update cc-dev-plugins\s*$/m);
+  const installIdx = out.search(/claude plugin install "?\$p@cc-dev-plugins"?/);
+  assert.ok(marketplaceUpdateIdx > 0 && marketplaceUpdateIdx < installIdx, 'marketplace update が install より前に無い');
+  const updates = [...out.matchAll(/^\s*claude plugin update "?\$p@cc-dev-plugins"?\s*$/gm)];
+  assert.equal(updates.length, 1);
+  const pluginUpdateIdx = out.search(/claude plugin update "?\$p@cc-dev-plugins"?/);
+  assert.ok(installIdx < pluginUpdateIdx, 'plugin update が install より前にある');
+});
+
 test('Setup script のテンプレートは apt-get update の失敗で後続を止めない', () => {
   // ベースイメージの PPA が 403 で update が非ゼロ終了し、&& でつなぐと install が走らなかった
   const out = templateCode(apply(tempRepo()).stdout);
@@ -159,4 +172,13 @@ test('Setup script のテンプレートは MCP をユーザー単位で登録�
     assert.match(out, new RegExp(`timeout \\d+ npx -y ${add[1].replace(/[/@.]/g, '\\$&')} --version < /dev/null`), `${name} の事前取得の版が登録と違う`);
   }
   assert.match(out, /npx -y @playwright\/mcp@[0-9][^\s]* install-browser chrome-for-testing/);
+});
+
+test('playwright MCP は自己署名証明書のリポジトリでも画面を開けるよう証明書エラーを無視する', () => {
+  // LB を自前で持つリポジトリ（hrms 等）は自己署名証明書で、ローカルの CA を信頼させる手立てが無い。
+  // 付けないと MCP の browser_navigate が ERR_CERT_AUTHORITY_INVALID で失敗する（実測）
+  const out = templateCode(apply(tempRepo()).stdout);
+  const add = out.match(/claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright\/mcp@[^\s]+ ([^\n]*)/);
+  assert.ok(add, 'playwright MCP の登録行が見つからない');
+  assert.match(add[1], /--ignore-https-errors\b/);
 });

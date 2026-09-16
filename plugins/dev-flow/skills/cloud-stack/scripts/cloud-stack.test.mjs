@@ -268,6 +268,21 @@ function blocksAfterFrom(text) {
   return lines.flatMap((l, i) => (/^FROM\s/.test(l) ? [lines.slice(i + 1, i + 7)] : []));
 }
 
+test('compose.env_file があれば --env-file を付けて起動する。無い／存在しなければ付けない', () => {
+  const w = makeWorld();
+  const repo = makeRepo(w.root, 'alpha', manifest({ compose: { ...manifest().compose, env_file: 'env.dev' } }));
+  fs.writeFileSync(path.join(repo, 'env.dev'), 'SIG_KEY=x\n');
+  run(w, ['up', 'alpha', '--wait']);
+  assert.ok(calls(w).some((c) => c.includes(`--env-file ${repo}/env.dev`)), '--env-file が付いていない');
+});
+
+test('compose.env_file を書いても、ファイルが無ければ --env-file を付けない', () => {
+  const w = makeWorld();
+  const repo = makeRepo(w.root, 'alpha', manifest({ compose: { ...manifest().compose, env_file: 'env.dev' } }));
+  run(w, ['up', 'alpha', '--wait']);
+  assert.equal(calls(w).some((c) => c.includes('--env-file')), false, '無いファイルを --env-file に指定した');
+});
+
 test('up は元の Dockerfile のすべての FROM の直後に CA を入れたクラウド用を作り、元の行は残す', () => {
   const w = makeWorld();
   const repo = makeRepo(w.root, 'alpha', manifest());

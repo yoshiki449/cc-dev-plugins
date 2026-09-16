@@ -44,6 +44,7 @@ bash $S down <repo>
   "playwright": ["e2e"],
   "compose": {
     "files": ["docker-compose.yml", "docker-compose.ci.yml"],
+    "env_file": "env.dev",
     "ca_builds": [
       { "dockerfile": "Dockerfile.backend", "context": ".", "services": ["backend", "scheduler"] },
       { "dockerfile": "frontend/Dockerfile", "context": "frontend", "services": ["frontend"] }
@@ -65,6 +66,7 @@ bash $S down <repo>
 | `npm` | `npm ci` するディレクトリ |
 | `playwright` | `@playwright/test` の版のブラウザを入れるディレクトリ（node_modules が無ければ先に `npm ci`） |
 | `compose.files` | `docker compose -f` に渡すファイル（リポジトリからの相対。兄弟リポジトリの `../other/compose.yml` も可） |
+| `compose.env_file` | `--env-file` に渡すファイル（省略可）。`environment: - VAR`（値なし）形式のサービスは、シェルの環境変数かこれからしか値が入らない。`prepare` で使い捨ての値を書き、ファイルが無ければ何も付けない |
 | `compose.ca_builds` | CA を入れてビルドする Dockerfile と、そのビルドコンテキストと、**その Dockerfile でビルドする全サービス**。漏れたサービスだけ証明書エラーで落ちる。context は兄弟リポジトリでもよい（CA は実際に置いたリポジトリの除外に足す） |
 | `compose.pre_up` / `post_up` | ビルドの前後に実行するコマンド（外部ネットワークの作成、DB の初期化など） |
 | `health` | 起動を待つ URL と、応答が無いときに起こし直すサービス |
@@ -76,6 +78,7 @@ bash $S down <repo>
 - CA が無い環境（ローカル）では、上書きを付けずに元の Dockerfile で起動する
 - Dockerfile が `apt-get` / `apk add` を使うなら、クラウド環境の Allowed domains に `deb.debian.org` / `dl-cdn.alpinelinux.org` が要る（既定のリストは Ubuntu だけ）。無いとビルドが 403 で落ちる
 - ホストのポートは、同じセッションの他のリポジトリと VM にプリインストールされたサービスと衝突しない値にする
+- **`health.url` は `compose.files` の `up` が終わった時点で応答できるものにする。** `task_stack` は `up → health → post_up` の順で進み、health が失敗すると post_up は実行されない。post_up で立てるもの（別 compose ファイルの LB など）を health の対象にすると、フレッシュな環境では必ず health で止まり、post_up が永遠に走らない。post_up 側で自前の待ち合わせ（curl のリトライループ）を持たせ、`health` は省略するか、`compose.files` に含まれるサービスだけを対象にする（hrms で実測）
 - `prepare` から重い処理（イメージのビルド、全依存の取得）を呼ばない。セッション開始を待たせる
 
 ## ファイル構成
