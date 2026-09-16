@@ -82,7 +82,9 @@ dev-flow の QC overlay（`skills/_shared/reference/qc-overlay.md`）は `~/.cc-
 読むが、クラウド VM は `$HOME` がセッションごとにリセットされるため、ローカル用の配置（組織側 plugin の
 `install_overlay.py` 等）は届かない。**環境変数と同様、Setup script の実行中には環境変数が読めない**
 （2026-09 実測。`references/cloud-environment-notes.md` 参照）ため、値を渡すのではなく、
-overlay ファイルの中身そのものを Setup script に埋め込む。
+overlay ファイルの中身そのものを届ける必要がある。方法は2通りある。
+
+#### 方法1: render して Setup script に貼る（overlay 用の常設リポジトリが不要）
 
 1. ローカルで `bash <skill-dir>/scripts/render_qc_overlay_snippet.sh` を実行する
 2. 出力を Setup script の plugin 導入ブロックの後・末尾の `wait` の前に貼る
@@ -94,6 +96,28 @@ overlay ファイルの中身そのものを Setup script に埋め込む。
 
 Setup script は環境1つを複数リポジトリで使い回すので、対象の業務リポジトリが同じ環境を
 使っていれば、この貼り付けは1回で全リポジトリに効く。
+
+#### 方法2: overlay を含むリポジトリをセッションに付けて自動同期する（貼り直し不要）
+
+overlay を含む private リポジトリ（cc-plugins 等）を、対象の業務リポジトリと同じセッションに
+毎回付けておく運用なら、貼り付け作業自体を無くせる。QC overlay は plan/impl/test-spec/verify/qa/
+ship/test-model の7フェーズ全部が消費するため、**特定フェーズの実行時ではなくセッション開始時**に
+同期しておく必要がある（`dev-qa` 実行時に初めて同期する設計だと、それより先に走るフェーズが
+overlay 無しのまま素通りしてしまう）。
+
+1. claude.ai の環境設定で、overlay を含むリポジトリ（例: cc-plugins）を対象の業務リポジトリと
+   同じセッションに付ける
+2. 「環境変数」欄に `CC_PLUGINS_OVERLAY_SOURCE_SUBPATH=<リポジトリルートからoverlayまでの相対パス>`
+   （例: `plugins/proseeds-overlay/overlay/qc`）を設定する
+3. dev-flow の SessionStart hook（`hooks/cloud-session-start.sh`）が毎セッション開始時に
+   `_shared/scripts/qc-overlay-cloud-sync.sh` を呼び、セッションに付いた各リポジトリの中から
+   このサブパスを持つものを探して `~/.cc-plugins/overlay/qc/` へコピーする
+   （クローン先ディレクトリの名前には依存しない。`cloud-stack.sh` の `repos()` と同じ探索方式）
+4. 貼り直しは不要。overlay 側のリポジトリを更新すれば次回セッションから自動で反映される
+
+トレードオフ: 方法2は overlay を含むリポジトリ全体（cc-plugins なら他の業務プラグインも含む）が
+毎回そのセッションから見える状態になる。QC観点だけに絞りたいなら方法1、複数リポジトリを常に
+セットで使う運用が既に確定しているなら方法2が向く。
 
 ## ファイル構成
 

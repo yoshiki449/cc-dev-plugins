@@ -15,7 +15,7 @@ description: Claude Code のクラウドセッション（claude.ai/code）で�
 
 | いつ | 何をする |
 |---|---|
-| セッション開始（dev-flow の SessionStart hook、クラウドのときだけ） | `prepare`: 各リポジトリの準備コマンド（使い捨て `.env` の生成など）を同期で実行し、`npm ci` と E2E 用ブラウザの導入をバックグラウンドで始める。スタックは立てない |
+| セッション開始（dev-flow の SessionStart hook、クラウドのときだけ） | `prepare`: 各リポジトリの準備コマンド（使い捨て `.env` の生成など）を同期で実行し、`npm ci` と E2E 用ブラウザの導入をバックグラウンドで始める。スタックは立てない。同じ hook から `_shared/scripts/qc-overlay-cloud-sync.sh` も呼ばれ、`CC_PLUGINS_OVERLAY_SOURCE_SUBPATH` が設定されていれば QC overlay を含むリポジトリを探して `~/.cc-plugins/overlay/qc/` へ同期する（`cloud-env-setup` の SKILL.md 参照） |
 | 必要なとき（このスキル） | `up <repo>`: dockerd を起こし、pre_up、CA 入りのクラウド用ビルドで `docker compose up --build -d`、health を待ち、post_up |
 
 各処理は `~/.cloud-stack/<repo>/<処理名>.{log,done,failed}` に状態が残る。resume で hook が再び走っても、ロックで並走させず、完了は成功時の目印だけで判定する。失敗した処理は次の `prepare` で知らせてやり直す。
