@@ -78,6 +78,7 @@ bash $S down <repo>
 - CA が無い環境（ローカル）では、上書きを付けずに元の Dockerfile で起動する
 - Dockerfile が `apt-get` / `apk add` を使うなら、クラウド環境の Allowed domains に `deb.debian.org` / `dl-cdn.alpinelinux.org` が要る（既定のリストは Ubuntu だけ）。無いとビルドが 403 で落ちる
 - ホストのポートは、同じセッションの他のリポジトリと VM にプリインストールされたサービスと衝突しない値にする
+- **`health.url` は `compose.files` の `up` が終わった時点で応答できるものにする。** `task_stack` は `up → health → post_up` の順で進み、health が失敗すると post_up は実行されない。post_up で立てるもの（別 compose ファイルの LB など）を health の対象にすると、フレッシュな環境では必ず health で止まり、post_up が永遠に走らない。post_up 側で自前の待ち合わせ（curl のリトライループ）を持たせ、`health` は省略するか、`compose.files` に含まれるサービスだけを対象にする（hrms で実測）
 - `prepare` から重い処理（イメージのビルド、全依存の取得）を呼ばない。セッション開始を待たせる
 
 ## ファイル構成
