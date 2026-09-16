@@ -110,19 +110,40 @@ test('デリミタと衝突する行を含むファイルは、壊れた出力�
   // 「わざと壊す」テスト: QC_OVERLAY_EOF という行がそのまま含まれると、
   // シングルクオート heredoc でもその行で早期終端し、出力が黙って壊れる。
   const src = tempDir('render-qc-collision-');
-  writeOverlay(src, { 'plan.md': '- 観点1\nQC_OVERLAY_EOF\n- 観点2（本当はここまで書きたい）\n' });
+  writeOverlay(src, {
+    'manifest.json': '{}\n',
+    'plan.md': '- 観点1\nQC_OVERLAY_EOF\n- 観点2（本当はここまで書きたい）\n',
+  });
   const r = render(src);
   assert.equal(r.status, 1, '衝突を検知できていない（出力が壊れたまま通っている）');
   assert.equal(r.stdout, '');
   assert.match(r.stderr, /衝突/);
 });
 
-test('chmod 700 / 600 の行が出力に含まれる', () => {
+test('manifest.json が無いとエラー終了する（フェーズファイルだけあっても貼り付け先で全滅するため）', () => {
+  // わざと壊すテスト: manifest.json を欠いたまま生成すると、貼り付け先の qc-overlay.sh は
+  // 全フェーズ overlay_applied=0 を返す。生成・貼り付けが「成功したように見える」のに
+  // QC観点が1つも効いていない状態を、生成の時点で止める。
+  const src = tempDir('render-qc-nomanifest-');
+  writeOverlay(src, { 'plan.md': '- 観点1\n', 'impl.md': '- 観点2\n' });
+  const r = render(src);
+  assert.equal(r.status, 1, 'manifest.json 欠落を検知できていない');
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /manifest\.json/);
+});
+
+test('--overlay-dir に値を渡さないと exit 2 になる（生の unbound variable エラーにしない）', () => {
+  const r = spawnSync('bash', [SCRIPT, '--overlay-dir'], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  assert.doesNotMatch(r.stderr, /未割り当ての変数|unbound variable/);
+});
+
+test('ディレクトリと各ファイルの chmod/mkdir が出力に含まれる', () => {
   const src = tempDir('render-qc-chmod-');
   writeOverlay(src, { 'manifest.json': '{}\n' });
   const r = render(src);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /chmod 700 ~\/\.cc-plugins\/overlay\/qc/);
+  assert.match(r.stdout, /mkdir -p -m 700 ~\/\.cc-plugins\/overlay\/qc/);
   assert.match(r.stdout, /chmod 600 ~\/\.cc-plugins\/overlay\/qc\/manifest\.json/);
 });
 

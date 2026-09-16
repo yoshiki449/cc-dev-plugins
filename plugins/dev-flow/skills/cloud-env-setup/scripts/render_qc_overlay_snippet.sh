@@ -15,7 +15,7 @@
 #
 # 終了コード:
 #   0: 出力した
-#   1: overlay ディレクトリが無い/ファイルが1つも無い、またはデリミタ衝突
+#   1: overlay ディレクトリが無い/ファイルが1つも無い/manifest.json が無い、またはデリミタ衝突
 #   2: 引数エラー・--help
 set -euo pipefail
 
@@ -39,7 +39,13 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --overlay-dir) OVERLAY_DIR="$2"; shift 2 ;;
+    --overlay-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --overlay-dir には値が必要です" >&2
+        print_usage
+        exit 2
+      fi
+      OVERLAY_DIR="$2"; shift 2 ;;
     --help|-h) print_usage; exit 2 ;;
     *) echo "ERROR: 不明な引数: $1" >&2; print_usage; exit 2 ;;
   esac
@@ -63,6 +69,18 @@ if [[ ${#FOUND[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# manifest.json を必須にする。フェーズファイルだけあっても、貼り付け先の qc-overlay.sh は
+# manifest.json が無いと全フェーズ overlay_applied=0 を返す（qc-overlay.sh の契約）。
+# ここで許すと「生成・貼り付けは成功したのにQC観点が1つも効いていない」を黙って作れてしまう。
+HAS_MANIFEST=0
+for name in "${FOUND[@]}"; do
+  [[ "$name" == "manifest.json" ]] && HAS_MANIFEST=1
+done
+if [[ "$HAS_MANIFEST" -eq 0 ]]; then
+  echo "ERROR: manifest.json が無い: $OVERLAY_DIR（フェーズファイルはあるが、manifest.json が無いと貼り付け先で全フェーズ overlay_applied=0 になる）" >&2
+  exit 1
+fi
+
 DELIM="QC_OVERLAY_EOF"
 
 # デリミタ衝突チェック。$DELIM という行を含むファイルは、シングルクオート heredoc でも
@@ -78,7 +96,9 @@ done
 
 echo "# QC overlay をクラウド環境に持ち込むブロック（render_qc_overlay_snippet.sh で生成）"
 echo "# plugin 導入ブロックの後・末尾の wait の前に貼ること"
-echo "mkdir -p ~/.cc-plugins/overlay/qc"
+# -m 700 で作成時から権限を絞る。mkdir 後に chmod する形だと、既定 umask のディレクトリが
+# 一瞬でも存在する（社内資産を置く場所なので、その間隙を作らない）。
+echo "mkdir -p -m 700 ~/.cc-plugins/overlay/qc"
 
 for name in "${FOUND[@]}"; do
   file="$OVERLAY_DIR/$name"
@@ -97,9 +117,7 @@ for name in "${FOUND[@]}"; do
   if [[ -n "$no_trailing_nl" ]]; then
     echo "truncate -s -1 $dest"
   fi
-done
-
-echo "chmod 700 ~/.cc-plugins/overlay/qc"
-for name in "${FOUND[@]}"; do
-  echo "chmod 600 ~/.cc-plugins/overlay/qc/$name"
+  # 書き込み直後に個別 chmod する。全ファイル出力後にまとめて chmod すると、
+  # 既定パーミッション（644）のまま存在する時間が長くなる。
+  echo "chmod 600 $dest"
 done
