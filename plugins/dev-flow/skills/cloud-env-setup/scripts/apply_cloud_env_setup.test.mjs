@@ -173,3 +173,12 @@ test('Setup script のテンプレートは MCP をユーザー単位で登録�
   }
   assert.match(out, /npx -y @playwright\/mcp@[0-9][^\s]* install-browser chrome-for-testing/);
 });
+
+test('playwright MCP は自己署名証明書のリポジトリでも画面を開けるよう証明書エラーを無視する', () => {
+  // LB を自前で持つリポジトリ（hrms 等）は自己署名証明書で、ローカルの CA を信頼させる手立てが無い。
+  // 付けないと MCP の browser_navigate が ERR_CERT_AUTHORITY_INVALID で失敗する（実測）
+  const out = templateCode(apply(tempRepo()).stdout);
+  const add = out.match(/claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright\/mcp@[^\s]+ ([^\n]*)/);
+  assert.ok(add, 'playwright MCP の登録行が見つからない');
+  assert.match(add[1], /--ignore-https-errors\b/);
+});

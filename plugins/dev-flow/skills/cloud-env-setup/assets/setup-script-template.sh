@@ -52,8 +52,10 @@ XML
 # 版を固定し、起動前に取得し、npm_config_prefer_offline で取得済みのキャッシュから起動させる
 # （付けないと npx はキャッシュがあってもレジストリへ問い合わせる）。-e はサーバー名の後ろに置く
 # context7 のツールは context7.com の API を呼ぶ。既定の許可リストに無いので Allowed domains に足す
+# --ignore-https-errors は自己署名証明書のリポジトリ（LB を自前で持つ等）向け。ローカルの
+# CA を信頼させる手立てが無いので、証明書は無視する運用にする。プレーンな HTTP のリポジトリには影響しない
 {
-  claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright/mcp@0.0.80 --caps=devtools --output-dir=/tmp/playwright-mcp
+  claude mcp add --scope user playwright -e npm_config_prefer_offline=true -- npx -y @playwright/mcp@0.0.80 --caps=devtools --ignore-https-errors --output-dir=/tmp/playwright-mcp
   claude mcp add --scope user context7 -e npm_config_prefer_offline=true -- npx -y @upstash/context7-mcp@4.1.0
   timeout 180 npx -y @playwright/mcp@0.0.80 --version < /dev/null
   timeout 180 npx -y @upstash/context7-mcp@4.1.0 --version < /dev/null

@@ -45,6 +45,7 @@ Setup script を混ぜずに済みます。
 | Docker Hub | 既定の許可リストにある `production.cloudflare.docker.com` ではなく `production.cloudfront.docker.com` から配られ、403 で pull できない | Network access を Custom にして足す |
 | Docker ビルド | VM はプロキシの自己署名 CA 越しに外へ出るので、ビルドコンテナ内の pip / npm が `CERTIFICATE_VERIFY_FAILED` | `/root/.ccr/ca-bundle.crt` をビルドに渡す（SKILL.md の実行手順3） |
 | playwright MCP | セッション内で実行した `claude mcp list` は `.mcp.json` のサーバーを `⏸ Pending approval` と表示するが、セッション本体は承認なしで読み込んでおりツールは使える | 表示ではなく、ツールが実際に使えるかで確かめる |
+| playwright MCP と自己署名証明書 | LB を自前で持つリポジトリ（hrms 等）の HTTPS は自己署名証明書で、ローカルの CA を信頼させる手立てが無い。`browser_navigate` が `ERR_CERT_AUTHORITY_INVALID` で失敗する | 登録時に `--ignore-https-errors` を付ける（テンプレートにある） |
 | MCP の起動 | セッション開始時に npx がその場でパッケージを取得し、ファイルが途中で切れて MCP が起動に失敗することがあった（起きる回と起きない回がある。そのセッションでは再接続されない） | 版を固定し、Setup script で事前に取得し、MCP の登録（Setup script のユーザー単位、またはリポジトリの `.mcp.json`）の `env` に `npm_config_prefer_offline=true` を付ける。修正後は3回続けて起動した |
 | Docker ビルドの apt / apk | 既定のリストに Debian と Alpine の配布元が無く、Debian 系イメージの `apt-get update` が 403 で落ちる | Allowed domains に `deb.debian.org`（Alpine なら `dl-cdn.alpinelinux.org`）を足す |
 | context7 MCP | 起動はするが、ツールを呼ぶと API の `context7.com` への CONNECT がプロキシに 403 で拒否される（既定の許可リストに無い） | Allowed domains に `context7.com` を足す |
