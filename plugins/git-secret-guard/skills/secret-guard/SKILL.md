@@ -101,13 +101,24 @@ git 全体の history は対象外（速度のため）。
 
 ### 誤検出回避（除外条件）
 
-以下は検出対象外（`scripts/secret-scan.sh` 内の `grep -v` で除外）：
+「PASSWORD/API_TOKEN 等の変数代入」「40文字以上の長い英数字」の2パターンは、以下は検出対象外
+（`scripts/secret-scan.sh` 内の `grep -viE` で除外。大文字小文字は区別しない）：
 
 - `os.environ` / `_require_env` / `process.env` を含む行（コードのenv参照）
-- プレースホルダ表記: `<...>`, `your-...`, `replace-with-...`, `example.com`, `placeholder`, `fake`
+- プレースホルダ表記: `<...>`, `your-...`, `replace-with-...`, `example.com`, `placeholder`,
+  `fake`, `dummy`, `sample`, `change-me` / `changeme`, `XXXX`, `0000...`, `REDACTED`
 - 変数参照: `$VAR`, `${VAR}`
 - HTML/JSON: `name="password"`, `description.*password`
-- URL / SHA / base64 ヘッダ
+- URL / SHA / base64 ヘッダ、`integrity` / `checksum`
+- ハッシュ化済みの値: bcrypt (`$2a$`/`$2b$`/`$2y$`)・argon2・pbkdf2・scrypt の形、
+  または変数名に `hash` を含む代入（`PASSWORD_HASH = "..."` 等。値そのものが秘密ではない）
+- **テスト/フィクスチャファイルの追加行**: diff のファイルパスが `tests?/` `specs?/` `__tests__/`
+  `__mocks__/` `mocks?/` `fixtures?/` `__fixtures__/` `testdata/` 配下、または
+  `*.test.*` `*.spec.*` `*_test.*` `*_spec.*` に一致するファイル。ダミー値・フィクスチャで
+  誤検出しやすいカテゴリなので、この2パターンに限って対象外にする
+
+「既知 SaaS/Cloud トークン prefix」（`sk-`, `AKIA...`, `ghp_...` 等）はテスト/フィクスチャファイルでも
+引き続き全文を見る。本物の値がテストファイルに紛れ込む害の方がダミー値の誤検出より大きいため。
 
 それでも誤検出が出た場合は **バイパス**（後述）で対処。
 

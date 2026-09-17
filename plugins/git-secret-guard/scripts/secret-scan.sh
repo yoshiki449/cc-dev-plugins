@@ -25,7 +25,7 @@ fi
 
 # ---- diff 取得 ----
 TMP=$(mktemp /tmp/secret-scan-XXXXXX) || exit 0
-trap "rm -f $TMP /tmp/secret-scan-*-vio.txt 2>/dev/null" EXIT
+trap "rm -f $TMP /tmp/secret-scan-nontest-* /tmp/secret-scan-*-vio.txt 2>/dev/null" EXIT
 
 if [ "$range" = "HEAD" ]; then
   # upstream 未設定 = 新規ブランチ。直近の1コミットだけ見る（過剰スキャン回避）。
@@ -41,6 +41,26 @@ if [ ! -s "$TMP" ]; then
   exit 0
 fi
 
+# ---- テスト/フィクスチャファイルの除外対象（パターン2・3のみ） ----
+# パターン1（既知トークンprefix）は本物の値が紛れ込むリスクが形で分かるので
+# テストファイルであっても引き続き全文を見る。パターン2・3は「値の形」だけで
+# 判定するため、テスト用のダミー値・フィクスチャで誤検出しやすい。
+# diff のファイルヘッダ（+++ b/<path>）を追いながら、現在のファイルが
+# テスト/フィクスチャらしいときだけそのファイルの追加行を落とす。
+TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
+awk '
+  /^\+\+\+ / {
+    file = $0
+    sub(/^\+\+\+ [ab]\//, "", file)
+    lf = tolower(file)
+    istest = (lf ~ /(^|\/)(tests?|specs?|__tests__|__mocks__|mocks?|fixtures?|__fixtures__|testdata)(\/|$)/) \
+          || (lf ~ /\.(test|spec)\.[^.\/]*$/) \
+          || (lf ~ /(_test|_spec)\.[^.\/]*$/)
+    next
+  }
+  /^\+/ { if (!istest) print }
+' "$TMP" > "$TMP_NONTEST" 2>/dev/null || true
+
 # ---- 検出パターン ----
 VIO_PREFIX=/tmp/secret-scan-prefix-vio.txt
 VIO_VARS=/tmp/secret-scan-vars-vio.txt
@@ -50,21 +70,26 @@ VIO_LONG=/tmp/secret-scan-long-vio.txt
 : > "$VIO_LONG"
 
 # 1. 既知 SaaS / Cloud のトークン prefix（追加行 "+" に限定。削除行は問題ない）
+# テスト/フィクスチャファイルでも見る。本物の値が紛れ込む害の方が大きい。
 grep -nE \
   '^\+.*(sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|ASIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|xox[abps]-[A-Za-z0-9-]{10,}|AIza[A-Za-z0-9_-]{35}|glpat-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z]+ PRIVATE KEY-----)' \
   "$TMP" > "$VIO_PREFIX" 2>/dev/null || true
 
 # 2. 変数代入で値が長い & 既知のホワイトリスト用語を含まない
-# 追加された行（"+" で始まる）に限定して誤検出を減らす
+# 追加された行（"+" で始まる）に限定して誤検出を減らす。
+# 除外側は大文字小文字を区別しない（-i）: "Fake" "REPLACE-WITH" のような
+# 表記違いを、小文字パターンだけで書いていたせいで誤検出していた。
+# ハッシュ化済みの値（bcrypt/argon2/pbkdf2/scrypt の形、または "hash" を含む
+# 変数名）はそもそも秘密の値そのものではないので除外する。
 grep -nE \
   '^\+.*(PASSWORD|PASSWD|SECRET|API[_-]?KEY|API[_-]?TOKEN|TOKEN|BEARER)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9!#$%&*+/=?_~@.-]{8,}' \
-  "$TMP" 2>/dev/null \
-  | grep -vE 'os\.environ|_require_env|process\.env|<[^>]+>|your-|replace-with|example\.|placeholder|fake|\$\{|\$[A-Z_]+|description.*password|name="password"|\*{2,}|REDACTED|XXXX|0000+' \
+  "$TMP_NONTEST" 2>/dev/null \
+  | grep -viE 'os\.environ|_require_env|process\.env|<[^>]+>|your-|replace-with|example\.|placeholder|fake|dummy|sample|change-?me|\$\{|\$[A-Za-z_]+|description.*password|name="password"|\*{2,}|redacted|xxxx|0000+|hash|\$2[aby]\$|argon2|pbkdf2|scrypt' \
   > "$VIO_VARS" 2>/dev/null || true
 
-# 3. 長い英数字（40文字以上）の塊。URL や SHA 行は除外
-grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP" 2>/dev/null \
-  | grep -vE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|hash:|\*{2,}|REDACTED' \
+# 3. 長い英数字（40文字以上）の塊。URL や SHA 行、ハッシュ値は除外
+grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP_NONTEST" 2>/dev/null \
+  | grep -viE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|hash|\*{2,}|redacted|integrity|checksum' \
   | head -50 > "$VIO_LONG" 2>/dev/null || true
 
 # ---- 集計 ----
