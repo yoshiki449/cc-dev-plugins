@@ -64,6 +64,7 @@ VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd�
    - `.claude/settings.json` に SessionStart hook を**冪等に**マージ（既存キーと利用者の plugin 宣言は残す）
    - Setup script のテンプレートと注意事項を表示
 2. リポジトリが `.gitignore` で `.claude/` を除外していたら、`.claude/*` ＋ `!.claude/settings.json` の形に直すよう案内する（除外されたままだとコミットできず、クラウドに届かない）
+   - `.agent/` が全面除外されていたら、`.agent/*` ＋ `!.agent/knowledge.md` 等の allowlist 形式（`/doc-standard` 準拠形式。詳細は `~/.claude/best-practices/IMPLEMENTATION.md` の「ドキュメント保管規約」）に直すよう案内する。除外されたままだと knowledge.md 等がクラウドに届かない。`.gitignore` を直しても `.git/info/exclude` に `.agent` の全面除外が残っていると allowlist が効かないことがあるので、`git check-ignore -v .agent/knowledge.md` の出力元ファイルで確認する
 3. `.env` など gitignore 済みのファイルが起動に必要なら、`scripts/cloud-session-init.sh` を一緒に作る。重い処理（`docker compose up`・`npm ci`）は `nohup ... &` でバックグラウンドにし、ログを gitignore 済みのパスに書く。resume でも hook は走るので、flock で並走を防ぎ、完了は成功時に書く目印で判定する
    - Docker でパッケージを取得するビルドがあるなら、プロキシの CA（`/root/.ccr/ca-bundle.crt`。公的 CA ＋プロキシ CA のバンドル）をビルドに渡す。本番用 Dockerfile は変えず、各 `FROM` の直後に `COPY` とPIP_CERT / REQUESTS_CA_BUNDLE / SSL_CERT_FILE / NODE_EXTRA_CA_CERTS を足したクラウド用を元から生成し、compose の上書きで差し替えるのが実測で動いた方法（同じ Dockerfile を使う全サービスを差し替えること）
 4. MCP を使うなら `.mcp.json`（project scope）に書き、`.claude/settings.json` の `enabledMcpjsonServers` に名前を入れる。project scope は user scope より優先されるので、ローカルの挙動が変わらない引数にする

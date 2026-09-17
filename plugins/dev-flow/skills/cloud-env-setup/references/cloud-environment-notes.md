@@ -15,6 +15,7 @@
 | ユーザー設定でだけ有効にした plugin | 届かない | Setup script で入れる |
 | `claude mcp add` で user / local scope に足した MCP | 届かない | `--scope project` で `.mcp.json` に書いてコミットする |
 | `.gitignore` 済みのファイル（`.env` など） | 届かない | `scripts/cloud-session-init.sh` でセッションごとに作る |
+| `.agent/`（全面 gitignore のとき） | 届かない | `.agent/*` ＋ `!.agent/knowledge.md` 等の allowlist 形式に直す（`/doc-standard` 準拠形式）。`.gitignore` だけでなく `.git/info/exclude` にも `.agent` の全面除外が残っていないか確認する |
 | `~/.cc-plugins/overlay/qc/`（組織固有の QC 観点） | 届かない（`$HOME` はセッションごとにリセットされる） | Setup script に埋め込む（`cloud-env-setup` の `scripts/render_qc_overlay_snippet.sh` で生成） |
 
 ## Setup script は手動貼り付けが必要
