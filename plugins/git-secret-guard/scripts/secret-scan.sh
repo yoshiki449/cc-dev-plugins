@@ -25,7 +25,10 @@ fi
 
 # ---- diff 取得 ----
 TMP=$(mktemp /tmp/secret-scan-XXXXXX) || exit 0
-trap "rm -f $TMP /tmp/secret-scan-nontest-* /tmp/secret-scan-*-vio.txt 2>/dev/null" EXIT
+VIO_PREFIX=$(mktemp /tmp/secret-scan-prefix-vio-XXXXXX) || exit 0
+VIO_VARS=$(mktemp /tmp/secret-scan-vars-vio-XXXXXX) || exit 0
+VIO_LONG=$(mktemp /tmp/secret-scan-long-vio-XXXXXX) || exit 0
+trap "rm -f $TMP /tmp/secret-scan-nontest-* $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
 
 if [ "$range" = "HEAD" ]; then
   # upstream 未設定 = 新規ブランチ。直近の1コミットだけ見る（過剰スキャン回避）。
@@ -45,30 +48,37 @@ fi
 # パターン1（既知トークンprefix）は本物の値が紛れ込むリスクが形で分かるので
 # テストファイルであっても引き続き全文を見る。パターン2・3は「値の形」だけで
 # 判定するため、テスト用のダミー値・フィクスチャで誤検出しやすい。
-# diff のファイルヘッダ（+++ b/<path>）を追いながら、現在のファイルが
-# テスト/フィクスチャらしいときだけそのファイルの追加行を落とす。
+# diff のファイルヘッダ（--- a/<path> の直後の +++ b/<path>）を追いながら、
+# 現在のファイルがテスト/フィクスチャらしいときだけそのファイルの追加行を落とす。
+#
+# "--- " の直後という条件が必須（コードレビューで実測したバイパス経路）:
+# unified diff の "+++ " ヘッダは本文中には出ない前提で、当初は単に "+++ " で
+# 始まる行が来たらヘッダとして扱っていた。しかし「追加された行の中身がたまたま
+# "++ " から始まる」場合、diff 上の見た目は "+" (追加行マーカー) + "++ 本文" =
+# "+++ 本文" になり、区別が付かなくなる。この行を偽ヘッダとして誤認すると、
+# 以降の追加行（本物のシークレットを含みうる）が丸ごとテスト扱いになって
+# 検出から漏れる。本物のヘッダは常に "--- a/<path>" の直後にしか現れないので、
+# 直前行が "--- " だったときだけ次の "+++ " をヘッダとして受理する。
 TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
 awk '
-  /^\+\+\+ / {
-    file = $0
-    sub(/^\+\+\+ [ab]\//, "", file)
-    lf = tolower(file)
-    istest = (lf ~ /(^|\/)(tests?|specs?|__tests__|__mocks__|mocks?|fixtures?|__fixtures__|testdata)(\/|$)/) \
-          || (lf ~ /\.(test|spec)\.[^.\/]*$/) \
-          || (lf ~ /(_test|_spec)\.[^.\/]*$/)
-    next
+  {
+    if ($0 ~ /^--- /) { pending_header = 1; next }
+    if (pending_header && $0 ~ /^\+\+\+ /) {
+      file = $0
+      sub(/^\+\+\+ [ab]\//, "", file)
+      lf = tolower(file)
+      istest = (lf ~ /(^|\/)(tests?|specs?|__tests__|__mocks__|mocks?|fixtures?|__fixtures__|testdata)(\/|$)/) \
+            || (lf ~ /\.(test|spec)\.[^.\/]*$/) \
+            || (lf ~ /(_test|_spec)\.[^.\/]*$/)
+      pending_header = 0
+      next
+    }
+    pending_header = 0
+    if ($0 ~ /^\+/) { if (!istest) print }
   }
-  /^\+/ { if (!istest) print }
 ' "$TMP" > "$TMP_NONTEST" 2>/dev/null || true
 
 # ---- 検出パターン ----
-VIO_PREFIX=/tmp/secret-scan-prefix-vio.txt
-VIO_VARS=/tmp/secret-scan-vars-vio.txt
-VIO_LONG=/tmp/secret-scan-long-vio.txt
-: > "$VIO_PREFIX"
-: > "$VIO_VARS"
-: > "$VIO_LONG"
-
 # 1. 既知 SaaS / Cloud のトークン prefix（追加行 "+" に限定。削除行は問題ない）
 # テスト/フィクスチャファイルでも見る。本物の値が紛れ込む害の方が大きい。
 grep -nE \
@@ -79,17 +89,32 @@ grep -nE \
 # 追加された行（"+" で始まる）に限定して誤検出を減らす。
 # 除外側は大文字小文字を区別しない（-i）: "Fake" "REPLACE-WITH" のような
 # 表記違いを、小文字パターンだけで書いていたせいで誤検出していた。
-# ハッシュ化済みの値（bcrypt/argon2/pbkdf2/scrypt の形、または "hash" を含む
-# 変数名）はそもそも秘密の値そのものではないので除外する。
+# ハッシュ化済みの値（bcrypt/argon2/pbkdf2/scrypt の形）はそもそも秘密の値
+# そのものではないので除外する。"hash" を含む変数名（PASSWORD_HASH 等）も
+# 同様に除外するが、行のどこかに "hash" があれば無条件に除外、ではなく
+# 検出対象のキーワードと直接隣接する複合語（間はアンダースコア1個まで）に
+# 限る（セルフレビューで実測: 素の "hash" 単語一致だと、無関係な変数名や
+# 値・コメントに "hash" を含むだけの本物の値まで除外してしまう。
+# `[A-Za-z0-9_]*` のような無制限のギャップにすると、逆に HASHICORP_TOKEN の
+# ような無関係な識別子まで「hash と TOKEN が同じ行にある」というだけで
+# 除外してしまう。ギャップは "_?"（アンダースコア1個まで）に絞る）。
+GAP='_?'
+KW='(PASSWORD|PASSWD|SECRET|API[_-]?KEY|API[_-]?TOKEN|TOKEN|BEARER)'
+HASH_ADJ="(hash${GAP}${KW}|${KW}${GAP}hash)"'[[:space:]]*[=:]'
 grep -nE \
-  '^\+.*(PASSWORD|PASSWD|SECRET|API[_-]?KEY|API[_-]?TOKEN|TOKEN|BEARER)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9!#$%&*+/=?_~@.-]{8,}' \
+  '^\+.*'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9!#$%&*+/=?_~@.-]{8,}' \
   "$TMP_NONTEST" 2>/dev/null \
-  | grep -viE 'os\.environ|_require_env|process\.env|<[^>]+>|your-|replace-with|example\.|placeholder|fake|dummy|sample|change-?me|\$\{|\$[A-Za-z_]+|description.*password|name="password"|\*{2,}|redacted|xxxx|0000+|hash|\$2[aby]\$|argon2|pbkdf2|scrypt' \
+  | grep -viE 'os\.environ|_require_env|process\.env|<[^>]+>|your-|replace-with|example\.|placeholder|fake|dummy|sample|change-?me|\$\{|\$[A-Za-z_]+|description.*password|name="password"|\*{2,}|redacted|xxxx|0000+|\$2[aby]\$|argon2|pbkdf2|scrypt|'"$HASH_ADJ" \
   > "$VIO_VARS" 2>/dev/null || true
 
 # 3. 長い英数字（40文字以上）の塊。URL や SHA 行、ハッシュ値は除外
+# "hash" は前後が英字でない位置（行頭/行末 or 非英字）でのみ一致させる。
+# `\b`（単語境界）は使えない: アンダースコアは word 文字として扱われるため
+# "PASSWORD_HASH" の "_HASH" 側で境界が成立せず、除外したいケースを取りこぼす。
+# 一方 "HASHICORP_TOKEN" の "HASH" は右側が英字 "I" で続くので、この境界条件
+# では一致しない（除外されない＝本物の値なら引き続き検出される）。
 grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP_NONTEST" 2>/dev/null \
-  | grep -viE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|hash|\*{2,}|redacted|integrity|checksum' \
+  | grep -viE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|(^|[^A-Za-z])hash([^A-Za-z]|$)|\*{2,}|redacted|integrity|checksum' \
   | head -50 > "$VIO_LONG" 2>/dev/null || true
 
 # ---- 集計 ----

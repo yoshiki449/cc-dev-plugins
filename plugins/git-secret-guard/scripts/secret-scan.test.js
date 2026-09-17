@@ -187,3 +187,40 @@ test('変数名に hash を含む代入は誤検出しない', () => {
   const r = run(repo);
   assert.strictEqual(r.status, 0, `hash 由来の変数名を秘密の値として止めてしまった\n${r.stderr}`);
 });
+
+// ---------------------------------------------------------------------------
+// 誤検出の修正が検出漏れ（バイパス）を生んでいないことの回帰
+// ---------------------------------------------------------------------------
+
+test('"hash" を含むだけで無関係な変数名（HASHICORP_TOKEN 等）は除外しない', () => {
+  // hash 除外のギャップを無制限にすると、"HASHICORP" のような無関係な語でも
+  // "hash と TOKEN が同じ行にある" というだけで本物の値まで除外してしまう
+  // （セキュリティレビュー・コードレビューの両方が指摘）。ギャップを
+  // アンダースコア1個までに絞ったことで、これは除外されず検出され続ける。
+  const repo = mkRepo({ 'settings.py': kv('HASHICORP_' + K.token, FAKE_TOKEN_VALUE) + '\n' });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '"HASHICORP_TOKEN" のような無関係な語のせいで本物の値を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+test('hashicorp のような hash を含むだけの語では長い英数字の除外が発動しない', () => {
+  const repo = mkRepo({ 'blob.txt': `hashicorp_ref = "${LONG_ALNUM}"\n` });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '"hashicorp" のような語のせいで本物らしい長い英数字を見逃してはいけない');
+  assert.match(r.stderr, /40文字以上の長い英数字/);
+});
+
+test('本物のシークレット行の直前が偽のファイルヘッダに見えるレイアウトでも検出を維持する', () => {
+  // コードレビューで実測したバイパス経路の回帰テスト。
+  // 追加された行の中身が "++ " から始まると、diff 上の見た目は
+  // "+"（追加行マーカー）+ "++ 本文" = "+++ 本文" になり、テスト/フィクスチャ
+  // 判定の awk がこれを diff のファイルヘッダと誤認しうる。誤認すると、
+  // それ以降の追加行（本物のシークレットを含む行）が丸ごとテスト扱いになって
+  // パターン2・3の検出から漏れる。
+  const trickLine = '++ b/fake.test.js';
+  const body = trickLine + '\n' + kv(K.password, FAKE_PASSWORD_VALUE) + '\n';
+  const repo = mkRepo({ 'app.js': body });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '偽ヘッダに化ける行の直後にある本物のシークレット行を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
