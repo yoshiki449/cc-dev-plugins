@@ -62,8 +62,9 @@ VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd�
    - `package.json`（1階層下も含めて Playwright を検出）/ `requirements.txt` / `pyproject.toml`+`uv.lock` / `go.mod` / `docker-compose.yml` を検出
    - `scripts/install_pkgs.sh` を生成（既存ファイルは上書きせず警告のみ）
    - `.claude/settings.json` に SessionStart hook を**冪等に**マージ（既存キーと利用者の plugin 宣言は残す）
+   - `~/.cc-plugins/overlay/claude-rules/cloud-portable-rules.md`（あれば）を `.claude/rules/cloud-portable-rules.md` に管理ブロックとして転記（詳細は下の「ユーザースコープ CLAUDE.md の汎用ルールをクラウドに持ち込む場合」）
    - Setup script のテンプレートと注意事項を表示
-2. リポジトリが `.gitignore` で `.claude/` を除外していたら、`.claude/*` ＋ `!.claude/settings.json` の形に直すよう案内する（除外されたままだとコミットできず、クラウドに届かない）
+2. リポジトリが `.gitignore` で `.claude/` を除外していたら、`.claude/*` ＋ `!.claude/settings.json` の形に直すよう案内する（除外されたままだとコミットできず、クラウドに届かない）。`.claude/rules/` を転記した場合は `!.claude/rules/` も足す必要がある（スクリプトは `git check-ignore` で自動検出して警告するが、直すのは手動）
    - `.agent/` が全面除外されていたら、`.agent/*` ＋ `!.agent/knowledge.md` 等の allowlist 形式（`/doc-standard` 準拠形式。詳細は `~/.claude/best-practices/IMPLEMENTATION.md` の「ドキュメント保管規約」）に直すよう案内する。除外されたままだと knowledge.md 等がクラウドに届かない。`.gitignore` を直しても `.git/info/exclude` に `.agent` の全面除外が残っていると allowlist が効かないことがあるので、`git check-ignore -v .agent/knowledge.md` の出力元ファイルで確認する
 3. `.env` など gitignore 済みのファイルが起動に必要なら、`scripts/cloud-session-init.sh` を一緒に作る。重い処理（`docker compose up`・`npm ci`）は `nohup ... &` でバックグラウンドにし、ログを gitignore 済みのパスに書く。resume でも hook は走るので、flock で並走を防ぎ、完了は成功時に書く目印で判定する
    - Docker でパッケージを取得するビルドがあるなら、プロキシの CA（`/root/.ccr/ca-bundle.crt`。公的 CA ＋プロキシ CA のバンドル）をビルドに渡す。本番用 Dockerfile は変えず、各 `FROM` の直後に `COPY` とPIP_CERT / REQUESTS_CA_BUNDLE / SSL_CERT_FILE / NODE_EXTRA_CA_CERTS を足したクラウド用を元から生成し、compose の上書きで差し替えるのが実測で動いた方法（同じ Dockerfile を使う全サービスを差し替えること）
@@ -76,6 +77,36 @@ VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd�
    - Network access は Custom にし「既定のリストを含める」にチェックする。既定には Docker Hub のイメージ本体の配信元 `production.cloudfront.docker.com`・業務 SaaS・Playwright のブラウザ配布元・context7 の API（`context7.com`）・Debian と Alpine のパッケージ配布元（`deb.debian.org` / `dl-cdn.alpinelinux.org`）が入っていない
    - 環境変数欄の値は、その環境を使える人と Claude から読める。ローカル開発用の秘密はセッションごとに生成する
    - 変更をコミットして push するまで、クラウドには何も届かない
+
+### ユーザースコープ CLAUDE.md の汎用ルールをクラウドに持ち込む場合
+
+`~/.claude/CLAUDE.md`（言語ルール・コーディング規約・行動原則など）はクラウドセッションに一切届かない
+（公式ドキュメント https://code.claude.com/docs/en/memory.md に "Local instructions to add to `.claude/`
+are not loaded into cloud sessions" と明記。2026-09 に一次情報を確認済み）。一方、**プロジェクト内の
+`.claude/rules/*.md` は公式に自動で読み込まれる**（同ドキュメントの "Organize rules with `.claude/rules/`"
+セクション。クラウドセッションもリポジトリをクローンして動くので、プロジェクト内のファイルとして届く）。
+
+QC overlay（下記）が Setup script への埋め込み方式を取っているのは「社内資産で公開したくない・
+複数リポジトリで使い回したい」という理由からで、汎用ルールはその条件に当てはまらない。公開して
+問題ない内容なら、**Setup script を経由せず `.claude/rules/` へ直接コミットする方が素直**（手動貼り
+付けも不要で、リポジトリにコミットするだけで全クラウドセッションに効く）。
+
+1. `~/.claude/CLAUDE.md` から、リポジトリの外の参照（`~/.claude/dossier/` や
+   `~/.claude/best-practices/*.md` への「詳細は」リンクなど）を含まない**本文だけ**を抜き出し、
+   `~/.cc-plugins/overlay/claude-rules/cloud-portable-rules.md`（qc overlay と同じ「ユーザー個別の
+   設定ファイル」枠の例外。`qc/` とは独立したサブディレクトリで、`manifest.json` 等の契約は無い。
+   環境変数 `CC_PLUGINS_CLAUDE_RULES_FILE` で差し替え可）に保存する
+2. `bash <skill-dir>/scripts/apply_cloud_env_setup.sh` を実行すると、対象リポジトリの
+   `.claude/rules/cloud-portable-rules.md` に管理ブロック（`<!-- cloud-env-setup:claude-rules
+   START/END -->`）として転記される。再実行するとブロック内だけ overlay の最新内容に差し替わり、
+   ブロックの前後に利用者が書き足した記述は残る。overlay ファイルが無ければ何もしない（届かない
+   ことを黙って通すのではなく、生成しないだけで正常終了する）
+3. `.gitignore` を `.claude/*` の allowlist 形式にしているリポジトリでは `!.claude/rules/` の追加を
+   忘れると黙って ignore される。スクリプトは `git check-ignore` で検出して警告するが、直すのは手動
+4. 貼り付けではなくコミットなので、実際にクラウドセッションで `.claude/rules/cloud-portable-rules.md`
+   の内容が効いているかを、そのルールに沿った指示を出して確かめる（配置しただけでは検証にならない。
+   QC overlay の検証手順と同じ発想）
+5. overlay の内容を更新したら、対象リポジトリで `apply_cloud_env_setup.sh` を再実行してコミットし直す
 
 ### 組織固有の QC 観点(overlay)をクラウドにも持ち込む場合
 

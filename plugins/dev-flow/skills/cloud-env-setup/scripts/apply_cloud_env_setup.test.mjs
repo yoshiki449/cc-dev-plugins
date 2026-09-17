@@ -235,6 +235,97 @@ test('Setup script のテンプレートに Go ツールチェーン導入のコ
   assert.equal(syntaxCheck.status, 0, `Go 導入行の構文が壊れている: ${syntaxCheck.stderr}`);
 });
 
+// ~/.cc-plugins/overlay/claude-rules/cloud-portable-rules.md（ユーザー個別設定。qc overlay と同じ
+// 「plugin 外参照の例外」枠）に汎用ルール本文を置いておくと、.claude/rules/ に自動転記される。
+// .claude/rules/ は公式に自動読み込みされる（memory.md 実測済み）。overlay 元ファイルの中身は
+// 各利用者の私物なので、テストは常に一時ディレクトリを作って CC_PLUGINS_CLAUDE_RULES_FILE で差し替える。
+function withClaudeRulesOverlay(content, fn) {
+  const overlayDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-rules-overlay-'));
+  const overlayFile = path.join(overlayDir, 'cloud-portable-rules.md');
+  if (content !== null) fs.writeFileSync(overlayFile, content);
+  const env = { ...process.env, CC_PLUGINS_CLAUDE_RULES_FILE: overlayFile };
+  return fn(env);
+}
+
+function applyWithEnv(dir, env, args = []) {
+  const r = spawnSync('bash', [SCRIPT, ...args, dir], { encoding: 'utf8', env });
+  assert.equal(r.status, 0, `apply が失敗した: ${r.stderr}`);
+  return r;
+}
+
+const rulesDestOf = (dir) => path.join(dir, '.claude', 'rules', 'cloud-portable-rules.md');
+
+test('overlay が無ければ .claude/rules/ を作らない', () => {
+  withClaudeRulesOverlay(null, (env) => {
+    const dir = tempRepo();
+    applyWithEnv(dir, env);
+    assert.equal(fs.existsSync(rulesDestOf(dir)), false);
+  });
+});
+
+test('overlay があれば .claude/rules/cloud-portable-rules.md に管理ブロックとして転記する', () => {
+  withClaudeRulesOverlay('# 汎用ルール\n\n日本語で対話する。\n', (env) => {
+    const dir = tempRepo();
+    applyWithEnv(dir, env);
+    const out = fs.readFileSync(rulesDestOf(dir), 'utf8');
+    assert.match(out, /<!-- cloud-env-setup:claude-rules START/);
+    assert.match(out, /<!-- cloud-env-setup:claude-rules END -->/);
+    assert.match(out, /日本語で対話する。/);
+  });
+});
+
+test('2回実行しても .claude/rules/cloud-portable-rules.md が変わらない（冪等）', () => {
+  withClaudeRulesOverlay('# 汎用ルール\n\n日本語で対話する。\n', (env) => {
+    const dir = tempRepo();
+    applyWithEnv(dir, env);
+    const first = fs.readFileSync(rulesDestOf(dir), 'utf8');
+    applyWithEnv(dir, env);
+    assert.equal(fs.readFileSync(rulesDestOf(dir), 'utf8'), first);
+  });
+});
+
+test('overlay の内容を更新して再実行すると管理ブロックの外の利用者記述は残る', () => {
+  withClaudeRulesOverlay('# 汎用ルール v1\n\n日本語で対話する。\n', (env) => {
+    const dir = tempRepo();
+    applyWithEnv(dir, env);
+    const dest = rulesDestOf(dir);
+    const before = fs.readFileSync(dest, 'utf8');
+    fs.writeFileSync(dest, `# このリポジトリ固有の補足\n\n(利用者が手で書いた行)\n\n${before}`);
+
+    withClaudeRulesOverlay('# 汎用ルール v2\n\n日本語で対話する（更新後）。\n', (env2) => {
+      applyWithEnv(dir, env2);
+      const after = fs.readFileSync(dest, 'utf8');
+      assert.match(after, /このリポジトリ固有の補足/);
+      assert.match(after, /利用者が手で書いた行/);
+      assert.match(after, /日本語で対話する（更新後）。/);
+      assert.doesNotMatch(after, /日本語で対話する。\n/);
+    });
+  });
+});
+
+test('管理マーカーの無い既存ファイルは上書きせず警告する', () => {
+  withClaudeRulesOverlay('# 汎用ルール\n\n日本語で対話する。\n', (env) => {
+    const dir = tempRepo();
+    fs.mkdirSync(path.join(dir, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(rulesDestOf(dir), '# 手書きのルールファイル\n');
+    const r = applyWithEnv(dir, env);
+    assert.equal(fs.readFileSync(rulesDestOf(dir), 'utf8'), '# 手書きのルールファイル\n');
+    assert.match(r.stderr, /管理マーカーが無いため/);
+  });
+});
+
+test('.claude/* を許可リスト化した .gitignore があると .claude/rules/ が ignore され、警告する', () => {
+  // SKILL.md の案内どおり `.claude/*` + `!.claude/settings.json` にした状態を再現。
+  // .claude/rules/ の許可を足し忘れると、生成に成功したように見えてコミットされずクラウドに届かない。
+  withClaudeRulesOverlay('# 汎用ルール\n\n日本語で対話する。\n', (env) => {
+    const dir = tempRepo();
+    fs.writeFileSync(path.join(dir, '.gitignore'), '.claude/*\n!.claude/settings.json\n');
+    const r = applyWithEnv(dir, env);
+    assert.ok(fs.existsSync(rulesDestOf(dir)), 'ファイル自体は生成されているはず');
+    assert.match(r.stderr, /gitignore.*無視|無視.*gitignore/);
+  });
+});
+
 test('Go 導入ブロックはダウンロードに失敗すると set -e で止まり、壊れたシンボリックリンクを作らない', () => {
   // 実際のクラウドセッションで dl.google.com がブロックされたとき、set -e が無いと
   // /usr/local/go/bin が実在しないまま ln -sf だけ成功し、「導入成功」に見える壊れた

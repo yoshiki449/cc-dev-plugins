@@ -11,7 +11,7 @@
 | リポジトリの `.claude/settings.json` の plugin 宣言 | **効かない**（ドキュメントでは入るとされるが実測で入らない） | Setup script で `claude plugin install --scope user` する |
 | plugin の更新 | `claude plugin install` は「無ければ入れる」だけで、既に入っていると marketplace の最新コミットを追わない。環境のキャッシュを作り直しても、install だけでは古い版のまま止まる | install の直後に `claude plugin marketplace update` と `claude plugin update` も呼ぶ |
 | リポジトリの `.mcp.json` | 届く | 対話で承認できないので `enabledMcpjsonServers` で有効化しておく |
-| `~/.claude/CLAUDE.md`・`~/.claude/skills/` | 届かない | 必要な部分をリポジトリの `.claude/rules/` などにコミットする |
+| `~/.claude/CLAUDE.md`・`~/.claude/skills/` | 届かない | 汎用ルールの抜粋は `.claude/rules/`（公式に自動読み込みされる）にコミットする。`cloud-env-setup` が `~/.cc-plugins/overlay/claude-rules/cloud-portable-rules.md` から自動転記する（SKILL.md の「ユーザースコープ CLAUDE.md の汎用ルールをクラウドに持ち込む場合」） |
 | ユーザー設定でだけ有効にした plugin | 届かない | Setup script で入れる |
 | `claude mcp add` で user / local scope に足した MCP | 届かない | `--scope project` で `.mcp.json` に書いてコミットする |
 | `.gitignore` 済みのファイル（`.env` など） | 届かない | `scripts/cloud-session-init.sh` でセッションごとに作る |

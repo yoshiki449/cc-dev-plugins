@@ -132,7 +132,63 @@ else
     log "更新: $SETTINGS に SessionStart hook をマージ"
 fi
 
-# === 4. Setup script テンプレートを表示 ===
+# === 4. ~/.cc-plugins/overlay/claude-rules/ の汎用ルールを .claude/rules/ に転記 ===
+# 境界: 入力 = overlay 側の1ファイル（中身は関知しない）／出力 = 対象リポジトリの1ファイル／
+# 責務は転記のみ。overlay は qc overlay（skills/_shared/reference/qc-overlay.md）と同じ
+# 「plugin 外参照は ~/.cc-plugins/.env と ~/.cc-plugins/overlay/ の2つだけ例外」の枠に載るが、
+# qc/ 配下の manifest.json 必須という契約とは独立した別サブディレクトリ（claude-rules/）を使う。
+# 無くても動く（qc overlay と同じ方針。~/.claude/CLAUDE.md はクラウドに届かないので、
+# 汎用ルールの抜粋だけを事前に overlay 側へ書いておいてもらう前提）。
+CLAUDE_RULES_SRC="${CC_PLUGINS_CLAUDE_RULES_FILE:-$HOME/.cc-plugins/overlay/claude-rules/cloud-portable-rules.md}"
+if [ -f "$CLAUDE_RULES_SRC" ]; then
+    mkdir -p .claude/rules
+    RULES_DEST=".claude/rules/cloud-portable-rules.md"
+    RULES_MARKER_START="<!-- cloud-env-setup:claude-rules START (自動生成。編集は overlay 側 ~/.cc-plugins/overlay/claude-rules/ で行う) -->"
+    RULES_MARKER_END="<!-- cloud-env-setup:claude-rules END -->"
+
+    if [ -f "$RULES_DEST" ] && ! grep -qF "$RULES_MARKER_START" "$RULES_DEST"; then
+        warn "$RULES_DEST は既に存在しますが管理マーカーが無いため変更しません（手動で確認してください）"
+    else
+        # マーカーブロックだけを除いた残り（利用者がブロックの前後に書いた記述）を保持し、
+        # 末尾に新しいブロックを再構成する。位置までは保持しない（前後どちらにあったかは問わない）。
+        RULES_REMAINDER=""
+        if [ -f "$RULES_DEST" ]; then
+            RULES_REMAINDER="$(awk -v s="$RULES_MARKER_START" -v e="$RULES_MARKER_END" '
+                $0 == s { skip=1; next }
+                $0 == e { skip=0; next }
+                skip { next }
+                { print }
+            ' "$RULES_DEST")"
+        fi
+        TMP_RULES=$(mktemp)
+        {
+            [ -n "$RULES_REMAINDER" ] && printf '%s\n' "$RULES_REMAINDER"
+            echo "$RULES_MARKER_START"
+            cat "$CLAUDE_RULES_SRC"
+            echo ""
+            echo "$RULES_MARKER_END"
+        } > "$TMP_RULES"
+
+        if [ -f "$RULES_DEST" ] && cmp -s "$TMP_RULES" "$RULES_DEST"; then
+            rm -f "$TMP_RULES"
+            log "既存: $RULES_DEST は最新です（変更なし）"
+        else
+            mv "$TMP_RULES" "$RULES_DEST"
+            log "更新: $RULES_DEST に汎用ルールを反映"
+        fi
+    fi
+
+    # .claude/* を許可リスト化した .gitignore（SKILL.md の案内どおりの形）だと、
+    # !.claude/rules/ を足し忘れた場合にここだけ黙って ignore される。生成成功の
+    # ログだけでは気づけないので、ここで実際に check-ignore して警告する。
+    if git check-ignore -q "$RULES_DEST" 2>/dev/null; then
+        warn "$RULES_DEST は .gitignore で無視されています。コミットされずクラウドに届きません（.claude/* を除外しているなら !.claude/rules/ も .gitignore に追加してください）"
+    fi
+else
+    log "汎用ルール overlay 無し（$CLAUDE_RULES_SRC）。.claude/rules/ は生成しません"
+fi
+
+# === 5. Setup script テンプレートを表示 ===
 log "以下を claude.ai/code の環境設定ダイアログ「Setup script」欄に貼り付けてください:"
 echo "----------------------------------------"
 cat "$SKILL_DIR/assets/setup-script-template.sh"
@@ -149,6 +205,6 @@ if [ "${#RECOMMEND[@]}" -gt 0 ]; then
     done
 fi
 
-# === 5. 注意事項の案内 ===
+# === 6. 注意事項の案内 ===
 echo ""
 cat "$SKILL_DIR/references/cloud-environment-notes.md"
