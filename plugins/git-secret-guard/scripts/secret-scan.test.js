@@ -211,10 +211,10 @@ test('hashicorp のような hash を含むだけの語では長い英数字の�
 });
 
 test('本物のシークレット行の直前が偽のファイルヘッダに見えるレイアウトでも検出を維持する', () => {
-  // コードレビューで実測したバイパス経路の回帰テスト。
+  // コードレビューで実測したバイパス経路の回帰テスト（1段目）。
   // 追加された行の中身が "++ " から始まると、diff 上の見た目は
   // "+"（追加行マーカー）+ "++ 本文" = "+++ 本文" になり、テスト/フィクスチャ
-  // 判定の awk がこれを diff のファイルヘッダと誤認しうる。誤認すると、
+  // 判定がこれを diff のファイルヘッダと誤認しうる。誤認すると、
   // それ以降の追加行（本物のシークレットを含む行）が丸ごとテスト扱いになって
   // パターン2・3の検出から漏れる。
   const trickLine = '++ b/fake.test.js';
@@ -222,5 +222,30 @@ test('本物のシークレット行の直前が偽のファイルヘッダに�
   const repo = mkRepo({ 'app.js': body });
   const r = run(repo);
   assert.strictEqual(r.status, 1, '偽ヘッダに化ける行の直後にある本物のシークレット行を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+test('偽の削除行(--)と偽の追加行(++)の組み合わせでも検出を維持する', () => {
+  // セキュリティレビューで実機再現されたバイパス経路の回帰テスト（2段目）。
+  // 1段目の修正（直前行が "--- " のときだけ "+++ " を受理）だけでは、
+  // 削除された行の中身が "-- " から始まり、直後の追加行の中身が "++ " から
+  // 始まるケースを防げない。"-" + "-- 本文" = "--- 本文"、
+  // "+" + "++ 本文" = "+++ 本文" が連続すると、偽の削除ヘッダ＋偽の追加ヘッダの
+  // 組み合わせで「本物のヘッダの並び」をそのまま模倣できてしまう。
+  // "diff --git " アンカー方式（プレフィックス文字が必ず付く追加/削除行とは
+  // 構造的に衝突しない）に変えたことで、この組み合わせも防げることを確認する。
+  const repo = mkRepo({ 'app.js': '-- old comment\n' });
+  fs.writeFileSync(
+    path.join(repo, 'app.js'),
+    '++ b/fake.test.js\n' + kv(K.password, FAKE_PASSWORD_VALUE) + '\n',
+  );
+  execFileSync('git', ['add', '-A'], { cwd: repo, env: GIT_ENV });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'second'],
+    { cwd: repo, env: GIT_ENV },
+  );
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '偽の削除行と偽の追加行の組み合わせで本物のシークレット行を見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
