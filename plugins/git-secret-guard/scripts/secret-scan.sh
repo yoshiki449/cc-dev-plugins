@@ -78,9 +78,15 @@ TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
 awk '
   {
     if ($0 ~ /^diff --git /) {
+      # リネームでは "diff --git a/<旧パス> b/<新パス>" になる。判定したいのは
+      # 「追加された内容が今どこに置かれるか」なので新パス（b/ 側）を残す。
+      # 2段に分けて "a/" 側だけ剥がす実装は、リネーム時に旧パスの方が残って
+      # しまうバグだった（セキュリティレビューで実測: テスト/フィクスチャ
+      # ファイルを本番コードのパスへリネームしつつ末尾に本物のシークレットを
+      # 追記すると、旧パスの判定のままパターン2・3の検出をすり抜けた）。
+      # 一度に "a/<旧パス> b/" までを剥がして新パスだけを残す。
       file = $0
-      sub(/^diff --git a\//, "", file)
-      sub(/ b\/.*$/, "", file)
+      sub(/^diff --git a\/.* b\//, "", file)
       lf = tolower(file)
       istest = (lf ~ /(^|\/)(tests?|specs?|__tests__|__mocks__|mocks?|fixtures?|__fixtures__|testdata)(\/|$)/) \
             || (lf ~ /\.(test|spec)\.[^.\/]*$/) \

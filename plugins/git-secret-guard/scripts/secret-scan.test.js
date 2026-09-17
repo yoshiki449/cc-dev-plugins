@@ -249,3 +249,30 @@ test('偽の削除行(--)と偽の追加行(++)の組み合わせでも検出を
   assert.strictEqual(r.status, 1, '偽の削除行と偽の追加行の組み合わせで本物のシークレット行を見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
+
+test('テスト/フィクスチャファイルを本番コードのパスへリネームしつつ追記したシークレットは検出を維持する', () => {
+  // セキュリティレビューで実機再現されたバイパス経路の回帰テスト。
+  // "diff --git a/<旧パス> b/<新パス>" というリネームの diff ヘッダから、
+  // 判定に使う file を旧パス（a/ 側）のまま抽出してしまうと、テスト/フィクスチャの
+  // パスから本番コードのパスへリネームしつつ末尾に本物のシークレットを追記する
+  // 操作で、パターン2・3の検出を丸ごとすり抜けられる。新パス（b/ 側）を
+  // 使うよう直したので、リネーム後の本番パスとして検出され続けることを確認する。
+  const filler = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join('');
+  const repo = mkRepo({ 'tests/foo.js': filler });
+  fs.unlinkSync(path.join(repo, 'tests', 'foo.js'));
+  const newPath = path.join(repo, 'src', 'foo.js');
+  fs.mkdirSync(path.dirname(newPath), { recursive: true });
+  fs.writeFileSync(newPath, filler + kv(K.password, FAKE_PASSWORD_VALUE) + '\n');
+  execFileSync('git', ['add', '-A'], { cwd: repo, env: GIT_ENV });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'rename'],
+    { cwd: repo, env: GIT_ENV },
+  );
+  // テストの前提: git がこの内容類似度でリネームとして検出していること
+  const diffOut = execFileSync('git', ['log', '-p', '--max-count=1'], { cwd: repo, env: GIT_ENV, encoding: 'utf8' });
+  assert.match(diffOut, /^diff --git a\/tests\/foo\.js b\/src\/foo\.js$/m, 'テストの前提: rename として検出されていない');
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, 'リネームで本番パスへ移動しつつ追記したシークレットを見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
