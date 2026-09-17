@@ -276,3 +276,34 @@ test('テスト/フィクスチャファイルを本番コードのパスへリ�
   assert.strictEqual(r.status, 1, 'リネームで本番パスへ移動しつつ追記したシークレットを見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
+
+test('非ASCIIファイル名のリネーム（git がパスをクォートする）でも検出を維持する', () => {
+  // セキュリティレビューで実機再現されたバイパス経路の回帰テスト。
+  // git は core.quotepath（既定 true）により、非ASCII文字を含むパスを
+  // ダブルクォート＋8進エスケープで囲む
+  // （例: diff --git "a/tests/\346\227\245..." "b/src/\346\227\245..."）。
+  // この形は "diff --git a/.* b/" に一致しないため sub が空振りし、file には
+  // 未加工の行全体（旧パスの "tests/" という断片を含む）が残ってしまう。
+  // それをそのまま判定に使うと、新パスが本番コードでも旧パスの "tests/" に
+  // 引っ張られて istest=true と誤判定されうる。パース失敗時は安全側
+  // （走査する）に倒すよう直したので、検出され続けることを確認する。
+  const filler = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join('');
+  const oldName = '日本語.js';
+  const repo = mkRepo({ [`tests/${oldName}`]: filler });
+  fs.unlinkSync(path.join(repo, 'tests', oldName));
+  const newPath = path.join(repo, 'src', oldName);
+  fs.mkdirSync(path.dirname(newPath), { recursive: true });
+  fs.writeFileSync(newPath, filler + kv(K.password, FAKE_PASSWORD_VALUE) + '\n');
+  execFileSync('git', ['add', '-A'], { cwd: repo, env: GIT_ENV });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'rename'],
+    { cwd: repo, env: GIT_ENV },
+  );
+  // テストの前提: git がこのパスをクォートしてリネームと検出していること
+  const diffOut = execFileSync('git', ['log', '-p', '--max-count=1'], { cwd: repo, env: GIT_ENV, encoding: 'utf8' });
+  assert.match(diffOut, /^diff --git "a\/tests\/.* "b\/src\/.*"$/m, 'テストの前提: クォート付きリネームとして検出されていない');
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '非ASCIIファイル名のリネームで本物のシークレットを見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
