@@ -16,7 +16,7 @@
           "id": { "type": "string", "pattern": "^FB[0-9]+$" },
           "category": {
             "type": "string",
-            "enum": ["bug", "ui-improvement", "spec-mismatch", "spec-addition", "performance", "a11y", "security"]
+            "enum": ["bug", "ui-improvement", "spec-mismatch", "spec-addition", "performance", "a11y", "security", "test-gap"]
           },
           "intent": { "type": "string", "description": "ユーザーが望む変更内容を1〜2文で要約" },
           "target_hint": {
@@ -27,6 +27,11 @@
           "needs_clarification": {
             "type": "boolean",
             "description": "判断不能で追加質問が必要な場合 true（Workflow 内では false 前提、true なら完了時にレポート）"
+          },
+          "test_layer": {
+            "type": "string",
+            "enum": ["機能", "運用", "ユーザー視点", "性能", "セキュリティ", "クロスブラウザ"],
+            "description": "category が test-gap のときだけ意味を持つ。dev-test-ledger の🔴行が運ぶテスト層。「運用」だけが e2e-test-generator 経由になる"
           }
         }
       }

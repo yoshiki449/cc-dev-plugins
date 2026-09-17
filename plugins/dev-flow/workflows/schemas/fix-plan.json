@@ -30,6 +30,16 @@
           "rollback_strategy": {
             "type": "string",
             "description": "副作用が大きい場合の戻し手順"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["bug", "ui-improvement", "spec-mismatch", "spec-addition", "performance", "a11y", "security", "test-gap"],
+            "description": "元の FeedbackItem の category をそのまま転記したもの（無ければ省略可）"
+          },
+          "test_layer": {
+            "type": "string",
+            "enum": ["機能", "運用", "ユーザー視点", "性能", "セキュリティ", "クロスブラウザ"],
+            "description": "元の FeedbackItem の test_layer をそのまま転記したもの。FixLoop が e2e-test-generator / implementer の振り分けに使う"
           }
         }
       }

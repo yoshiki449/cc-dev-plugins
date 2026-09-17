@@ -32,6 +32,15 @@ maxTurns: 15
       "needs_clarification": false
     },
     {
+      "id": "FB3",
+      "category": "test-gap",
+      "intent": "ニックネームが空のまま保存した時の挙動が検証されていない",
+      "target_hint": "src/profile/edit.tsx",
+      "priority": "medium",
+      "needs_clarification": false,
+      "test_layer": "運用"
+    },
+    {
       "id": "FB2",
       "category": "ui-improvement",
       "intent": "保存ボタンの色を青にする",
@@ -46,7 +55,8 @@ maxTurns: 15
 ## 分解ルール
 
 1. **1項目1意図**: 「Aを直してBを追加」は2項目に分ける
-2. **category 必須**: bug / ui-improvement / spec-mismatch / spec-addition / performance / a11y / security から選ぶ
+2. **category 必須**: bug / ui-improvement / spec-mismatch / spec-addition / performance / a11y / security / test-gap から選ぶ
+   - **test-gap**: 「〜が検証されていない」「テストが無い」のように、コードの不具合ではなく**自動テストの不在そのもの**を指摘している場合。dev-test-ledger の 🔴 テスト漏れ／QA レポートの指摘はここに入る（コメントが空でも quote から判断する）
    - 「使いにくい」など曖昧 → `needs_clarification: true` にして残す（後で人間に問い合わせ）
 3. **target_hint は REQUIREMENTS.md / DESIGN.md / `git ls-files` から推定**: ファイル名やコンポーネント名をできるだけ具体化
 4. **priority**: コメント文の温度感から推定（「即直してほしい」「動かない」=high、「気になる」「できれば」=low）
@@ -62,6 +72,7 @@ maxTurns: 15
 1. **target_hint は推定せず確定させる**: `### file:` の絶対パスと `[L開始-L終了]` の行番号・quote をそのまま target_hint に反映する（例: `docs/DESIGN.md L12-L20「<quote>」の周辺`）。対象が明確なので needs_clarification は原則 false
 2. **screenshot の絶対パスは必ず保持する**: screenshot 付きの項目は、intent の末尾に `（screenshot: <絶対パス> を Read で確認）` を**必ず**付けて、後段の implementer までパスが運ばれるようにする。自分でも screenshot を Read で開いて画面を確認してから intent を書く
 3. 動画コメント（`[t=秒]`）は「動画そのもの」ではなく「その時点で映っている機能・画面」への指摘として解釈する
+4. **quote が dev-test-ledger の台帳行（`## 🔴 テスト漏れ` 表の行、または「テスト層」列を含む行）から来ている場合**: category は `test-gap` にし、quote 中の「テスト層」列の値（機能/運用/ユーザー視点/性能/セキュリティ/クロスブラウザ）をそのまま `test_layer` フィールドに転記する。値を自分で判定し直さない。quote にテスト層列が無ければ `test_layer` は付けない（発明しない）
 
 ## ワークフロー
 

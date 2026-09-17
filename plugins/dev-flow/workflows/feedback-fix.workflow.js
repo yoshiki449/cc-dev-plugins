@@ -106,12 +106,16 @@ const FEEDBACK_ITEMS_SCHEMA = {
           id: { type: 'string', pattern: '^FB[0-9]+$' },
           category: {
             type: 'string',
-            enum: ['bug', 'ui-improvement', 'spec-mismatch', 'spec-addition', 'performance', 'a11y', 'security'],
+            enum: ['bug', 'ui-improvement', 'spec-mismatch', 'spec-addition', 'performance', 'a11y', 'security', 'test-gap'],
           },
           intent: { type: 'string' },
           target_hint: { type: 'string' },
           priority: { type: 'string', enum: ['high', 'medium', 'low'] },
           needs_clarification: { type: 'boolean' },
+          // category が test-gap のときだけ意味を持つ。dev-test-ledger の🔴行が運ぶテスト層
+          // （coverage.md 由来）をそのまま転記したもの。「運用」だけが e2e-test-generator 経由になる
+          // （test-tier-model.md ②運用テスト＝E2Eで自動化できる導線は自動、の定義に対応）。
+          test_layer: { type: 'string', enum: ['機能', '運用', 'ユーザー視点', '性能', 'セキュリティ', 'クロスブラウザ'] },
         },
       },
     },
@@ -312,6 +316,13 @@ const FIX_PLAN_SCHEMA = {
             },
           },
           rollback_strategy: { type: 'string' },
+          // FeedbackItems の category/test_layer をそのまま転記したもの（無ければ省略可）。
+          // FixLoop がこれを見て e2e-test-generator 経由にするか implementer 経由にするかを決める。
+          category: {
+            type: 'string',
+            enum: ['bug', 'ui-improvement', 'spec-mismatch', 'spec-addition', 'performance', 'a11y', 'security', 'test-gap'],
+          },
+          test_layer: { type: 'string', enum: ['機能', '運用', 'ユーザー視点', '性能', 'セキュリティ', 'クロスブラウザ'] },
         },
       },
     },
@@ -604,6 +615,7 @@ const fixPlan = await schemaAgent(
   `以下の FeedbackItems を FixPlan に変換してください。
 items: ${JSON.stringify(actionable, null, 2)}
 - 各項目に approach (1-3 文)、files_to_change、test_impact、rollback_strategy を必ず含める
+- 元の item に category / test_layer があれば、そのまま FixPlan 項目にも category / test_layer として転記する（値を変えない・無ければ付けない）
 - 副作用の小さい変更（UI・文言）と大きい変更（ロジック・スキーマ）を分けて優先順位を組む`,
   { schema: SCHEMA.FIX_PLAN, label: 'replan' }
 )
@@ -715,11 +727,34 @@ ${JSON.stringify(blocked.map(i => ({ source_id: i.source_id, approach: i.approac
   for (const f of pending.flatMap(i => i.files_to_change || [])) loopDeclaredFiles.add(f)
   const declaredFilesSet = new Set(loopDeclaredFiles)
 
-  // 各項目を implementer に sequential で流す（並列だと git index.lock 競合のため、#9 対策）
+  // 各項目を implementer（または E2E テスト漏れなら e2e-test-generator）に sequential で流す
+  // （並列だと git index.lock 競合のため、#9 対策）。
+  // category=test-gap かつ test_layer=運用 の項目だけ e2e-test-generator に回す。これは
+  // dev-test-ledger の🔴（テスト層: 運用）または QA レポートで既に「穴」と確定している既知の
+  // ギャップなので、implementer のような一般実装ではなく E2E 生成の専門エージェントに任せる
+  // （dev-verify D3 / e2e-test-generator 手順6-7 が既定で生成しないユーザーストーリー・機能テストを、
+  // 後段で確実に埋める導線。既定生成条件の判定は不要 — 呼び出し側で要否判断が済んでいるため）。
   const buildResults = []
   for (const item of pending) {
-    const r = await schemaAgent(
-      `implementer として ${item.source_id} のフィードバック反映を実行してください。
+    const isE2ETestGap = item.category === 'test-gap' && item.test_layer === '運用'
+    const r = isE2ETestGap
+      ? await schemaAgent(
+          `e2e-test-generator として ${item.source_id} の E2E テスト漏れを埋めてください。
+何を検証すべきか: ${item.approach}
+関連ファイル・画面: ${item.files_to_change.join(', ') || '(未特定。対象の Issue / DESIGN.md と既存 spec から対象導線を特定すること)'}
+**この項目は test-ledger の🔴テスト漏れ（テスト層: 運用）または QA レポートから起票された、既に確定したギャップです。
+通常手順6・7の「既定では生成しない」2条件判定は行わず、対応する Playwright のユーザーストーリー/機能テストを必ず生成・追加してください**
+（2条件判定は新規実装時の要否判断のためのものであり、この文脈では呼び出し側が既に穴と確定させている）。
+セキュリティテストの追加生成は対象外（この項目のスコープ外）。
+**スコープ厳守**: 上記の関連ファイル・画面以外の実装ソースは変更しないこと。${DENY_NOTE}
+生成後、全 E2E テスト PASS を確認してから test: コミットを作成。
+src_files_created は空配列で返すこと（テスト専用の変更であり実装ソースの修正ではないため）。
+
+注意: phase_id フィールドは FixLoop コンテキストでは "${item.source_id}" をそのまま入れて返してください（FB1 / REG1-2 等）。`,
+          { schema: SCHEMA.BUILD_RESULT, agentType: 'dev-flow:e2e-test-generator', label: `fix/${item.source_id}-a${attempt}`, phase: 'FixLoop' }
+        )
+      : await schemaAgent(
+          `implementer として ${item.source_id} のフィードバック反映を実行してください。
 方針: ${item.approach}
 対象: ${item.files_to_change.join(', ')}
 テスト更新: ${JSON.stringify(item.test_impact)}
@@ -729,10 +764,11 @@ src_files_created には修正した実装ソースファイルを列挙する�
 全テスト PASS と lint クリーンを確認してから feat: または fix: コミットを作成。
 - ui-improvement / spec-addition → feat:
 - bug / spec-mismatch → fix:
+- test-gap（テスト層が運用以外）→ test:
 
 注意: phase_id フィールドは FixLoop コンテキストでは "${item.source_id}" をそのまま入れて返してください（FB1 / REG1-2 等）。`,
-      { schema: SCHEMA.BUILD_RESULT, agentType: 'dev-flow:implementer', label: `fix/${item.source_id}-a${attempt}`, phase: 'FixLoop' }
-    )
+          { schema: SCHEMA.BUILD_RESULT, agentType: 'dev-flow:implementer', label: `fix/${item.source_id}-a${attempt}`, phase: 'FixLoop' }
+        )
     buildResults.push(r)
   }
   // 実 commit 数は diffStats.commits_in_attempt から取得するためここでは集計しない（#2 対策）
