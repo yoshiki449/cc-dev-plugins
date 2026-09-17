@@ -307,3 +307,45 @@ test('非ASCIIファイル名のリネーム（git がパスをクォートす�
   assert.strictEqual(r.status, 1, '非ASCIIファイル名のリネームで本物のシークレットを見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
+
+test('旧パスに区切りを模した文字列(" b/tests/...")を仕込んだリネームでも検出を維持する', () => {
+  // セキュリティレビューで実機再現された、パーステキスト方式そのものの限界を
+  // 突いたバイパス経路の回帰テスト。
+  //
+  // 旧パス（a/ 側）自体が " b/tests/foo.js" という部分文字列を含み、かつ
+  // 新パス（b/ 側）が非ASCII文字を含んでクォートされると、diff は
+  // `diff --git a/evil b/tests/foo.js "b/src/新パス.js"` のような行になる。
+  // "diff --git a/" の直後から最後の " b/" までを新パスとして切り出す方式
+  // （パースに失敗したら安全側に倒すフォールバック込み）では、この行の中に
+  // 実在する " b/"（旧パスの一部）に貪欲マッチが「成功」してしまい、
+  // 抽出結果が「旧パスの断片＋新パスの残骸」という中途半端な文字列になる。
+  // これは "^diff --git " では始まらないため、パース失敗の検知（safe
+  // fallback）もすり抜け、旧パス側の "tests/" に引っ張られて誤って
+  // istest=true になっていた。
+  //
+  // ファイルパスの抽出を diff 本文のテキストパースに一切頼らず、別途取得した
+  // `git diff --name-only -z` の一覧と出現順で突き合わせる方式に直したので、
+  // このクラスのバイパスは（ファイル名がどれだけ細工されていても）原理的に
+  // 発生しない。
+  const filler = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join('');
+  const oldName = 'evil b/tests/foo.js';
+  const repo = mkRepo({ [oldName]: filler });
+  fs.unlinkSync(path.join(repo, oldName));
+  const newName = 'src/新しい.js';
+  const newPath = path.join(repo, newName);
+  fs.mkdirSync(path.dirname(newPath), { recursive: true });
+  fs.writeFileSync(newPath, filler + kv(K.apiToken, FAKE_TOKEN_VALUE) + '\n');
+  execFileSync('git', ['add', '-A'], { cwd: repo, env: GIT_ENV });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'rename'],
+    { cwd: repo, env: GIT_ENV },
+  );
+  // テストの前提: 旧パス（a/側）はクォートなし、新パス（b/側）はクォート付きで
+  // リネームとして検出されていること（貪欲マッチの罠が成立する形）
+  const diffOut = execFileSync('git', ['log', '-p', '--max-count=1'], { cwd: repo, env: GIT_ENV, encoding: 'utf8' });
+  assert.match(diffOut, /^diff --git a\/evil b\/tests\/foo\.js "b\/src\/.*"$/m, 'テストの前提: 想定した形のリネームになっていない');
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '旧パスの区切り文字列に惑わされて本物のシークレットを見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
