@@ -349,3 +349,33 @@ test('旧パスに区切りを模した文字列(" b/tests/...")を仕込んだ�
   assert.strictEqual(r.status, 1, '旧パスの区切り文字列に惑わされて本物のシークレットを見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
+
+test('ファイル名に埋め込まれた改行があっても後続ファイルの対応がずれない', () => {
+  // セキュリティレビューで実機再現されたバイパス経路の回帰テスト。
+  // $FILES_LIST は `git diff/log -z --name-only`（NUL区切り）から作るが、
+  // 単純に NUL→改行 の tr 変換をすると、ファイル名自体に埋め込まれた改行
+  // （POSIX 上は許可されている）がその場でレコード境界になってしまい、
+  // 1つのファイルが2行に割れて以降すべてのファイルの対応が1つずつずれる。
+  // ここでは「innocent.txt\ntests/evil」という1つのファイル名が
+  // 「innocent.txt」「tests/evil」の2行に割れ、次に来る本物の本番ファイル
+  // （src/prod.js）の判定に「tests/evil」という行が使われてしまうことで、
+  // 本物のシークレットがテストファイル扱いになって検出をすり抜けていた。
+  // NUL区切りのまま扱う（改行はエスケープしてから1行化する）よう直したので、
+  // 対応がずれず検出され続けることを確認する。
+  const trickName = 'innocent.txt\ntests/evil';
+  const repo = mkRepo({
+    [trickName]: 'harmless\n',
+    'src/prod.js': 'harmless\n' + kv(K.password, FAKE_PASSWORD_VALUE) + '\n',
+  });
+  // テストの前提: name-only の順序で trickName が prod.js より先に来ること
+  const nameOnly = execFileSync('git', ['log', '-z', '--name-only', '--format=', '--max-count=1'], {
+    cwd: repo,
+    env: GIT_ENV,
+    encoding: 'utf8',
+  });
+  const names = nameOnly.split('\0').filter(Boolean);
+  assert.deepStrictEqual(names, [trickName, 'src/prod.js'], 'テストの前提: name-only の並び順が想定と異なる');
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, 'ファイル名の埋め込み改行でファイル対応がずれ、本番ファイルの秘密を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});

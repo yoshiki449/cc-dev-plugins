@@ -31,15 +31,28 @@ VIO_VARS=$(mktemp /tmp/secret-scan-vars-vio-XXXXXX) || exit 0
 VIO_LONG=$(mktemp /tmp/secret-scan-long-vio-XXXXXX) || exit 0
 trap "rm -f $TMP /tmp/secret-scan-nontest-* $FILES_LIST $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
 
+
+# NUL区切り→1行1レコードへの変換に使う awk 断片。
+# ファイル名には NUL は入りえない（ファイルシステムの制約）が、**改行は
+# POSIX 上許可されている**。単純に `tr '\0' '\n'` で変換すると、改行を
+# 含むファイル名がその場でレコード境界として割れてしまい、以降すべての
+# ファイルの対応関係がずれる（セキュリティレビューで実機再現）。
+# バックスラッシュ→\\、改行→\n の順でエスケープしてから1行として書き出す
+# ことで、レコードの境界を実際の改行（レコード内には現れない）だけに保つ。
+# 判定（tests/ 等の部分文字列一致）はエスケープ後の文字列に対して行っても
+# 結果は変わらない（エスケープはバックスラッシュと改行だけに作用し、
+# スラッシュや英数字は素通しするため）。
+Z_TO_LINES='BEGIN{RS="\0"; ORS="\n"} { gsub(/\\/,"\\\\"); gsub(/\n/,"\\n"); print }'
+
 if [ "$range" = "HEAD" ]; then
   # upstream 未設定 = 新規ブランチ。直近の1コミットだけ見る（過剰スキャン回避）。
   # 本物の push 時には origin/<branch> が出来た後 @{upstream} が解決するので、
   # この経路は主に「リモートに紐付けてない一時ブランチ」用。
   git log --no-color -p --max-count=1 > "$TMP" 2>/dev/null || true
-  git log -z --name-only --format= --max-count=1 2>/dev/null | tr '\0' '\n' > "$FILES_LIST" || true
+  git log -z --name-only --format= --max-count=1 2>/dev/null | awk "$Z_TO_LINES" > "$FILES_LIST" || true
 else
   git diff --no-color "$range" > "$TMP" 2>/dev/null || true
-  git diff -z --name-only "$range" 2>/dev/null | tr '\0' '\n' > "$FILES_LIST" || true
+  git diff -z --name-only "$range" 2>/dev/null | awk "$Z_TO_LINES" > "$FILES_LIST" || true
 fi
 
 if [ ! -s "$TMP" ]; then
