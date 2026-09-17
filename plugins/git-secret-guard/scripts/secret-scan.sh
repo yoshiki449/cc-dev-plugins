@@ -26,10 +26,14 @@ fi
 # ---- diff 取得 ----
 TMP=$(mktemp /tmp/secret-scan-XXXXXX) || exit 0
 FILES_LIST=$(mktemp /tmp/secret-scan-files-XXXXXX) || exit 0
+TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
 VIO_PREFIX=$(mktemp /tmp/secret-scan-prefix-vio-XXXXXX) || exit 0
 VIO_VARS=$(mktemp /tmp/secret-scan-vars-vio-XXXXXX) || exit 0
 VIO_LONG=$(mktemp /tmp/secret-scan-long-vio-XXXXXX) || exit 0
-trap "rm -f $TMP /tmp/secret-scan-nontest-* $FILES_LIST $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
+# クリーンアップはすべて実パスの変数参照で行う（glob 頼みにしない）。
+# glob（/tmp/secret-scan-nontest-*）で消すと、同時に走っている別プロセスの
+# 未使用でも生存中のファイルまで巻き込んで消しうる（コードレビューで指摘）。
+trap "rm -f $TMP $FILES_LIST $TMP_NONTEST $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
 
 
 # NUL区切り→1行1レコードへの変換に使う awk 断片。
@@ -86,7 +90,6 @@ fi
 # 検知をすり抜けた。）
 # パースに一切頼らず、信頼できる別ソースから来た一覧を順番で引き当てる
 # ことで、この種のバイパスをクラスごと閉じる。
-TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
 awk '
   FNR==NR { files[FNR] = $0; next }
   {
