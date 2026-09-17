@@ -82,6 +82,30 @@ function run(cwd) {
   return spawnSync('bash', [SCRIPT], { encoding: 'utf8', cwd, env: GIT_ENV });
 }
 
+// upstream 設定済みのリポジトリを作る。secret-scan.sh は upstream があると
+// `git diff/log -z --name-only "@{upstream}..HEAD"`（HEAD range とは別の
+// コードパス）を通るため、mkRepo（HEAD range 固定）とは別に用意する。
+// 実際の push 時にはこちらの経路が使われる。
+function mkRepoWithUpstream(initialFiles) {
+  const bare = tmpdir('bare');
+  execFileSync('git', ['init', '-q', '--bare', '--initial-branch=main', bare], { env: GIT_ENV });
+  const work = tmpdir('clone');
+  execFileSync('git', ['clone', '-q', bare, work], { env: GIT_ENV });
+  for (const [name, body] of Object.entries(initialFiles)) {
+    const abs = path.join(work, name);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+  }
+  execFileSync('git', ['add', '-A'], { cwd: work, env: GIT_ENV });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'init'],
+    { cwd: work, env: GIT_ENV },
+  );
+  execFileSync('git', ['push', '-q', '-u', 'origin', 'main'], { cwd: work, env: GIT_ENV });
+  return work;
+}
+
 // ---------------------------------------------------------------------------
 // 真の検出は消えていないこと（回帰）
 // ---------------------------------------------------------------------------
@@ -410,4 +434,44 @@ test('除外語が値の中に部分文字列として埋め込まれている�
   const r = run(repo);
   assert.strictEqual(r.status, 1, '値に埋め込まれた除外語のせいで本物らしい値を見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+// ---------------------------------------------------------------------------
+// upstream 設定済み（実際の push 経路）でも同じ判定になることの回帰
+// ---------------------------------------------------------------------------
+// ここまでの全テストは upstream が無いリポジトリ（HEAD range = `git log -p`）
+// だけを対象にしていた。しかし実際の push 時に使われるのは upstream がある
+// 場合の `git diff/log -z --name-only "@{upstream}..HEAD"` という別の
+// コードパスで、敵対的検証でこちらのテストが1件も無いことを指摘された
+// （2つの経路は同じ awk/grep ロジックを共有するが、diff の取得コマンド自体は
+// 別物であり、片方だけ壊れても自動検知できない）。代表的な回帰を1件、
+// この経路でも確認する。
+
+test('upstream 設定済み（実際の push 経路）でもリネームで本番パスへ移動した秘密を見逃さない', () => {
+  const filler = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join('');
+  const work = mkRepoWithUpstream({ 'tests/foo.js': filler });
+  fs.unlinkSync(path.join(work, 'tests', 'foo.js'));
+  const newPath = path.join(work, 'src', 'foo.js');
+  fs.mkdirSync(path.dirname(newPath), { recursive: true });
+  fs.writeFileSync(newPath, filler + kv(K.password, FAKE_PASSWORD_VALUE) + '\n');
+  execFileSync('git', ['add', '-A'], { cwd: work, env: GIT_ENV });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'rename'],
+    { cwd: work, env: GIT_ENV },
+  );
+  // テストの前提: upstream 経由で @{upstream}..HEAD が解決すること（未 push の1コミット分）
+  const upstreamRange = execFileSync('git', ['rev-parse', '@{upstream}'], { cwd: work, env: GIT_ENV, encoding: 'utf8' });
+  assert.ok(upstreamRange.trim().length > 0, 'テストの前提: upstream が解決できない');
+  const r = run(work);
+  assert.strictEqual(r.status, 1, 'upstream 経路でもリネームで本番パスへ移動した秘密を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+test('upstream 設定済み（実際の push 経路）では push 済みのコミットまで走査しない', () => {
+  // 回帰の副作用チェック: @{upstream}..HEAD の範囲指定そのものが壊れていないこと。
+  const work = mkRepoWithUpstream({ 'a.md': 'init\n' });
+  const r = run(work);
+  assert.strictEqual(r.status, 0, 'push 済みのコミットまで走査してはいけない');
+  assert.match(r.stderr, /スキャン対象の差分なし/);
 });
