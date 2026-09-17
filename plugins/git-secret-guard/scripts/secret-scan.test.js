@@ -379,3 +379,35 @@ test('ファイル名に埋め込まれた改行があっても後続ファイ�
   assert.strictEqual(r.status, 1, 'ファイル名の埋め込み改行でファイル対応がずれ、本番ファイルの秘密を見逃してはいけない');
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
+
+// ---------------------------------------------------------------------------
+// 誤検出の修正が検出漏れ（バイパス）を生んでいないことの回帰（除外語のdecoy）
+// ---------------------------------------------------------------------------
+
+test('除外語が値と無関係な場所（末尾コメント等）にあるだけでは除外しない', () => {
+  // 敵対的レビューで実機再現されたバイパス経路の回帰テスト。
+  // 除外語の判定を行全体に対して行うと、値とは無関係な場所（末尾コメント等）
+  // に除外語を1つ混ぜるだけで、本物らしい値まで検出をすり抜けられる。
+  // 判定は「代入された値そのもの」に対してだけ行うよう直したので、
+  // 値の外にある decoy には影響されず検出され続けることを確認する。
+  const realishValue = 'aB3xQ9mK' + '2pL7vN4rT8s';
+  const line = kv(K.password, realishValue) + '  # this is not a sample value';
+  const repo = mkRepo({ 'settings.py': line + '\n' });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '値と無関係な場所の除外語のせいで本物らしい値を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+test('除外語が値の中に部分文字列として埋め込まれているだけでは除外しない', () => {
+  // 敵対的レビューで実機再現されたバイパス経路の回帰テスト。
+  // 値だけを取り出しても、除外語が値の一部にたまたま（または意図的に）
+  // 埋め込まれているケースは残る（例: "notFakeRealSecretXYZ9" は値を
+  // 切り出しても "fake" を含む）。プレースホルダを示す英単語は前後が
+  // 英字で挟まれていない位置でのみ一致させるようにしたので、値の途中に
+  // 埋め込まれた decoy には影響されず検出され続けることを確認する。
+  const decoyInValue = 'notFake' + 'RealSecretXYZ9';
+  const repo = mkRepo({ 'conf.py': kv(K.apiToken, decoyInValue) + '\n' });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, '値に埋め込まれた除外語のせいで本物らしい値を見逃してはいけない');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});

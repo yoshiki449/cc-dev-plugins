@@ -135,11 +135,47 @@ grep -nE \
 GAP='_?'
 KW='(PASSWORD|PASSWD|SECRET|API[_-]?KEY|API[_-]?TOKEN|TOKEN|BEARER)'
 HASH_ADJ="(hash${GAP}${KW}|${KW}${GAP}hash)"'[[:space:]]*[=:]'
-grep -nE \
-  '^\+.*'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9!#$%&*+/=?_~@.-]{8,}' \
-  "$TMP_NONTEST" 2>/dev/null \
-  | grep -viE 'os\.environ|_require_env|process\.env|<[^>]+>|your-|replace-with|example\.|placeholder|fake|dummy|sample|change-?me|\$\{|\$[A-Za-z_]+|description.*password|name="password"|\*{2,}|redacted|xxxx|0000+|\$2[aby]\$|argon2|pbkdf2|scrypt|'"$HASH_ADJ" \
-  > "$VIO_VARS" 2>/dev/null || true
+VALUE_CHARS='[A-Za-z0-9!#$%&*+/=?_~@.-]{8,}'
+DETECT2='^\+.*'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?'"$VALUE_CHARS"
+
+# 除外語は「代入された値そのもの」に対してだけ判定する（行全体に対してでは
+# ない）。敵対的レビューで実測: 行全体を対象にすると、値とは無関係な場所
+# （同じ行の末尾コメント等）に除外語を1つ混ぜるだけで本物らしい値まで
+# 検出をすり抜けられる。
+#
+# それでも防げないケースがもう1つあった: 除外語が値そのものの中に
+# **部分文字列として埋め込まれている**場合（例: `API_TOKEN =
+# "notFakeRealSecretXYZ9"`。値を切り出しても "fake" を含んでいる）。
+# プレースホルダを示す英単語（fake/dummy/sample 等）は、前後が英字で
+# 挟まれていない位置でのみ一致させる（HASHICORP_TOKEN を誤って除外しない
+# ようにした "hash" の境界条件と同じ考え方）。"notFakeReal..." の
+# "Fake" は前後とも英字に挟まれているため、この境界条件では一致しない
+# （除外されない＝本物の値なら引き続き検出される）。
+# "xxxx" は同じ理由で厳密な単語一致ではなく4文字以上の繰り返しとして
+# 判定する（"XXXXXXXX" のような値は先頭の4文字の直後も英字が続くため、
+# 単語境界条件だと一致しなくなってしまう）。
+PLACEHOLDER_WORDS='(fake|dummy|sample|placeholder|redacted|change-?me|your-|replace-with|example\.)'
+VALUE_EXCLUDE='os\.environ|_require_env|process\.env|<[^>]+>|(^|[^A-Za-z])'"$PLACEHOLDER_WORDS"'([^A-Za-z]|$)|\$\{|\$[A-Za-z_]+|\*{2,}|x{4,}|0000+|\$2[aby]\$|argon2|pbkdf2|scrypt'
+# HTML/JSON の周辺マークアップ判定は値の中身ではなく行全体の構造を見る
+# ものなので、こちらは従来どおり行全体に対して判定する。
+LINE_EXCLUDE='description.*password|name="password"'
+
+while IFS= read -r cand; do
+  content="${cand#*:}"
+  if printf '%s\n' "$content" | grep -qiE "$LINE_EXCLUDE"; then
+    continue
+  fi
+  if printf '%s\n' "$content" | grep -qiE "$HASH_ADJ"; then
+    continue
+  fi
+  value=$(printf '%s\n' "$content" \
+    | grep -oE "$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?'"$VALUE_CHARS" \
+    | sed -E 's/^'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?//')
+  if printf '%s\n' "$value" | grep -qiE "$VALUE_EXCLUDE"; then
+    continue
+  fi
+  printf '%s\n' "$cand"
+done < <(grep -nE "$DETECT2" "$TMP_NONTEST" 2>/dev/null) > "$VIO_VARS"
 
 # 3. 長い英数字（40文字以上）の塊。URL や SHA 行、ハッシュ値は除外
 # "hash" は前後が英字でない位置（行頭/行末 or 非英字）でのみ一致させる。

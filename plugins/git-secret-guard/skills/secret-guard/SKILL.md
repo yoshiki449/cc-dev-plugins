@@ -102,14 +102,39 @@ git 全体の history は対象外（速度のため）。
 ### 誤検出回避（除外条件）
 
 「PASSWORD/API_TOKEN 等の変数代入」「40文字以上の長い英数字」の2パターンは、以下は検出対象外
-（`scripts/secret-scan.sh` 内の `grep -viE` で除外。大文字小文字は区別しない）：
+（`scripts/secret-scan.sh` 内で除外。大文字小文字は区別しない）：
 
 - `os.environ` / `_require_env` / `process.env` を含む行（コードのenv参照）
 - プレースホルダ表記: `<...>`, `your-...`, `replace-with-...`, `example.com`, `placeholder`,
   `fake`, `dummy`, `sample`, `change-me` / `changeme`, `XXXX`, `0000...`, `REDACTED`
 - 変数参照: `$VAR`, `${VAR}`
 - HTML/JSON: `name="password"`, `description.*password`
-- URL / SHA / base64 ヘッダ、`integrity` / `checksum`
+- URL / SHA / base64 ヘッダ、`integrity` / `checksum`（パターン3のみ。後述の限界あり）
+
+**パターン2の除外判定は「代入された値そのもの」に対してだけ行う（行全体ではない）。**
+当初は `grep -viE` で行全体を対象にしていたが、敵対的検証で実機再現された: 値とは
+無関係な場所（末尾コメント等）に除外語を1つ混ぜるだけで、本物らしい値の検出を
+回避できた（例: `PASSWORD = "aB3xQ9mK2pL7vN4rT8s"  # this is not a sample value`）。
+キーワード＋区切り記号の直後から値の文字集合の塊だけを取り出し、除外判定は
+その値に対してだけ行う（`HTML/JSON` の2つ、`name="password"` / `description.*password`
+は値ではなく行の構造を見るものなので、従来どおり行全体を対象にする）。
+
+さらに、除外語が値の中に**部分文字列として埋め込まれている**ケースも見つかった
+（例: `API_TOKEN = "notFakeRealSecretXYZ9"` は値を切り出しても `fake` を含む）。
+プレースホルダを示す英単語（fake/dummy/sample/placeholder/redacted/change-me/
+your-/replace-with/example.）は、前後を英字で挟まれていない位置でのみ一致させる
+（`HASHICORP_TOKEN` を誤って除外しないための `hash` の境界条件と同じ考え方。
+`notFakeReal...` の `fake` は前後とも英字に挟まれているため一致しない＝除外されない）。
+`xxxx` は単語一致ではなく4文字以上の繰り返し（`x{4,}`）として判定する
+（`XXXXXXXX` のような値は先頭の4文字の直後も英字が続くため、単語境界条件だと
+一致しなくなってしまうため）。
+
+**パターン3（40文字以上の英数字）の `checksum`/`integrity` 等の除外には、同種の
+バイパスが残っている**（`checksum_<実際の値>` のように隣接させて偽装できる）。
+パターン2と違って値の範囲を区切る手がかり（キー・区切り記号・クォート）が無いため、
+「隣接する語が本物のラベルか偽装か」を区別する必要があり、単純な境界条件では
+解けない。パターン3は元から「誤検出多め、要目視」と明記している設計限界の
+範囲として残す。
 - ハッシュ化済みの値: bcrypt (`$2a$`/`$2b$`/`$2y$`)・argon2・pbkdf2・scrypt の形、
   または変数名に `hash` を含む代入（`PASSWORD_HASH = "..."` 等。値そのものが秘密ではない）。
   `hash` はキーワードと直接隣接する複合語（間はアンダースコア1個まで）に限る。
