@@ -182,3 +182,54 @@ test('playwright MCP は自己署名証明書のリポジトリでも画面を�
   assert.ok(add, 'playwright MCP の登録行が見つからない');
   assert.match(add[1], /--ignore-https-errors\b/);
 });
+
+test('go.mod がリポジトリ直下にあるときは従来どおりの単純な行を生成する', () => {
+  const dir = tempRepo();
+  fs.writeFileSync(path.join(dir, 'go.mod'), 'module example.com/app\n\ngo 1.25\n');
+  apply(dir);
+  const installScript = fs.readFileSync(path.join(dir, 'scripts', 'install_pkgs.sh'), 'utf8');
+  assert.match(installScript, /^\[ -f go\.mod \] && go mod download$/m);
+});
+
+test('go.mod がサブディレクトリのモノレポにあっても検出し、そのディレクトリで go mod download する', () => {
+  // VM に Go はプリインストールされていないうえ、go.mod をルート直下しか見ないと
+  // バックエンドをサブディレクトリに置くモノレポでは検出自体が起きず、install_pkgs.sh の
+  // go mod download もルート相対のままで実行されない（実測）
+  const dir = tempRepo();
+  fs.mkdirSync(path.join(dir, 'backend'));
+  fs.writeFileSync(path.join(dir, 'backend', 'go.mod'), 'module example.com/backend\n\ngo 1.26\n');
+  apply(dir);
+  const installScript = fs.readFileSync(path.join(dir, 'scripts', 'install_pkgs.sh'), 'utf8');
+  assert.match(installScript, /^\[ -f 'backend\/go\.mod' \] && \( cd 'backend' && go mod download \)$/m);
+});
+
+test('go.mod を検出すると Go ツールチェーンの推奨メッセージを出す', () => {
+  const dir = tempRepo();
+  fs.writeFileSync(path.join(dir, 'go.mod'), 'module example.com/app\n\ngo 1.25\n');
+  const r = apply(dir);
+  assert.match(r.stderr, /Go ツールチェーン/);
+  assert.match(r.stderr, /go\.dev/);
+});
+
+test('go.mod が無いリポジトリでは Go ツールチェーンの推奨メッセージを出さない', () => {
+  const r = apply(tempRepo());
+  assert.doesNotMatch(r.stderr, /Go ツールチェーン/);
+});
+
+test('Setup script のテンプレートに Go ツールチェーン導入のコメントアウトブロックがあり、コメントを外せば構文が通る', () => {
+  // apt 版 golang-go は go.mod の要求より古いことが多く、VM には Go 自体が無いため、
+  // docker compose ブロックと同じ「該当リポジトリのときだけコメントを外す」形式で用意する
+  const [, body = ''] = apply(tempRepo()).stdout.split(/^-{20,}$/m);
+  assert.match(body, /Go を使うリポジトリ/);
+  assert.match(body, /wget -q "https:\/\/go\.dev\/dl\/go\$\{GOVER\}\.linux-amd64\.tar\.gz"/);
+  assert.match(body, /ln -sf \/usr\/local\/go\/bin\/go \/usr\/local\/bin\/go/);
+
+  const commentedLine = body.split('\n').find((l) => l.startsWith('# ( GOVER='));
+  assert.ok(commentedLine, 'コメントアウトされた Go 導入行が見つからない');
+  const uncommented = commentedLine.slice(2).replace(
+    '<go.mod の go ディレクティブに合わせる。例: 1.26.5>',
+    '1.26.5',
+  );
+  const syntaxCheck = spawnSync('bash', ['-n'], { input: uncommented, encoding: 'utf8' });
+  assert.equal(syntaxCheck.status, 0, `Go 導入行の構文が壊れている: ${syntaxCheck.stderr}`);
+});

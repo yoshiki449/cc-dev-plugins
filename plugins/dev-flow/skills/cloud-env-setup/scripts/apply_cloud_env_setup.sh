@@ -48,8 +48,16 @@ HAS_NPM=0; HAS_PIP=0; HAS_UV=0; HAS_GO=0; HAS_COMPOSE=0; HAS_PLAYWRIGHT=0
 [ -f package.json ] && HAS_NPM=1
 [ -f requirements.txt ] && HAS_PIP=1
 { [ -f pyproject.toml ] && [ -f uv.lock ]; } && HAS_UV=1
-[ -f go.mod ] && HAS_GO=1
 { [ -f docker-compose.yml ] || [ -f compose.yml ]; } && HAS_COMPOSE=1
+# バックエンドをサブディレクトリに置くモノレポもあるので、go.mod も Playwright と同じく1階層下まで見る。
+# 見つけたディレクトリは install_pkgs.sh の生成（§2）で go mod download の cd 先として使う
+GO_MOD_DIRS=()
+for gm in go.mod */go.mod; do
+    if [ -f "$gm" ]; then
+        HAS_GO=1
+        GO_MOD_DIRS+=("$(dirname "$gm")")
+    fi
+done
 # E2E を frontend/ や e2e/ に分けているリポジトリもあるので1階層下まで見る
 for pj in package.json */package.json; do
     if [ -f "$pj" ] && grep -q '"@playwright/test"' "$pj" 2>/dev/null; then
@@ -77,7 +85,15 @@ else
         [ "$HAS_NPM" = 1 ] && echo '[ -f package.json ] && npm install'
         [ "$HAS_PIP" = 1 ] && echo '[ -f requirements.txt ] && pip install -r requirements.txt'
         [ "$HAS_UV" = 1 ] && echo '[ -f pyproject.toml ] && [ -f uv.lock ] && uv sync'
-        [ "$HAS_GO" = 1 ] && echo '[ -f go.mod ] && go mod download'
+        if [ "$HAS_GO" = 1 ]; then
+            for d in "${GO_MOD_DIRS[@]}"; do
+                if [ "$d" = "." ]; then
+                    echo '[ -f go.mod ] && go mod download'
+                else
+                    echo "[ -f '$d/go.mod' ] && ( cd '$d' && go mod download )"
+                fi
+            done
+        fi
         echo ''
         echo '# .env の作り方やサービスの起動はリポジトリごとに違うので、ここには持たずに委ねる'
         echo 'if [ -f scripts/cloud-session-init.sh ]; then'
@@ -125,6 +141,7 @@ echo "----------------------------------------"
 RECOMMEND=()
 [ "$HAS_PLAYWRIGHT" = 1 ] && RECOMMEND+=("Playwright: プリインストールのブラウザと @playwright/test の要求版がずれるので、セッション初期化で npx playwright install を実行してください（@playwright/test を検出）")
 [ "$HAS_COMPOSE" = 1 ] && RECOMMEND+=("docker compose: Allowed domains に production.cloudfront.docker.com を足し、docker pull のブロックを有効化してください。ビルドでパッケージを取得するならプロキシ CA を渡す必要があります（注意事項を参照）")
+[ "$HAS_GO" = 1 ] && RECOMMEND+=("Go ツールチェーン: VM に Go はプリインストールされていません（npm/pip/uv は Node/Python が VM 側にあるため気づきにくいですが、Go だけは無い）。テンプレートの「Go を使うリポジトリ」ブロックのコメントを外し、go.mod の go ディレクティブに合わせて GOVER を書き換えてください。Allowed domains に go.dev を足す必要があります")
 if [ "${#RECOMMEND[@]}" -gt 0 ]; then
     log "このリポジトリ向けの推奨:"
     for r in "${RECOMMEND[@]}"; do

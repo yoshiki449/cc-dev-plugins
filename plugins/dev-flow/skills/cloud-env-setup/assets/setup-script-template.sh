@@ -71,6 +71,13 @@ XML
 # 作業ディレクトリに依存しないよう、compose ファイルは読まずにイメージ名を並べる
 # ( for img in <イメージ名:タグ> ...; do docker pull "$img"; done ) > /opt/setup-log/docker.log 2>&1 || true &
 
+# Go を使うリポジトリ: VM に Go はプリインストールされていない（npm/pip/uv は Node/Python が VM 側に
+# あるため気づきにくいが、Go だけは無い）。apt 版 golang-go は go.mod の要求より古いことが多いため、
+# 公式配布物で /usr/local/go に入れる。/usr/local/bin へシンボリックリンクするのは、Bash tool 等の
+# 非ログインシェルは /etc/profile.d を読まないため（profile 経由の PATH 追加は届かない）
+# ⚠ Allowed domains に go.dev を足す必要がある
+# ( GOVER=<go.mod の go ディレクティブに合わせる。例: 1.26.5>; wget -q "https://go.dev/dl/go${GOVER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz; rm -rf /usr/local/go; tar -C /usr/local -xzf /tmp/go.tar.gz; rm -f /tmp/go.tar.gz; ln -sf /usr/local/go/bin/go /usr/local/bin/go; ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt ) > /opt/setup-log/go.log 2>&1 || true &
+
 # リポジトリの .mcp.json にも npx で起動する MCP を書く場合（1リポジトリだけのセッション・ローカル用）は、
 # 版を上の登録と揃え、各サーバーに "env": {"npm_config_prefer_offline": "true"} を付ける
 
