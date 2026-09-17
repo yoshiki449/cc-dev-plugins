@@ -221,10 +221,11 @@ test('Setup script のテンプレートに Go ツールチェーン導入のコ
   // docker compose ブロックと同じ「該当リポジトリのときだけコメントを外す」形式で用意する
   const [, body = ''] = apply(tempRepo()).stdout.split(/^-{20,}$/m);
   assert.match(body, /Go を使うリポジトリ/);
-  assert.match(body, /wget -q "https:\/\/go\.dev\/dl\/go\$\{GOVER\}\.linux-amd64\.tar\.gz"/);
+  assert.match(body, /wget "https:\/\/go\.dev\/dl\/go\$\{GOVER\}\.linux-amd64\.tar\.gz"/);
   assert.match(body, /ln -sf \/usr\/local\/go\/bin\/go \/usr\/local\/bin\/go/);
+  assert.match(body, /go\.dev.*dl\.google\.com/s);
 
-  const commentedLine = body.split('\n').find((l) => l.startsWith('# ( GOVER='));
+  const commentedLine = body.split('\n').find((l) => l.startsWith('# ( set -e;'));
   assert.ok(commentedLine, 'コメントアウトされた Go 導入行が見つからない');
   const uncommented = commentedLine.slice(2).replace(
     '<go.mod の go ディレクティブに合わせる。例: 1.26.5>',
@@ -232,4 +233,36 @@ test('Setup script のテンプレートに Go ツールチェーン導入のコ
   );
   const syntaxCheck = spawnSync('bash', ['-n'], { input: uncommented, encoding: 'utf8' });
   assert.equal(syntaxCheck.status, 0, `Go 導入行の構文が壊れている: ${syntaxCheck.stderr}`);
+});
+
+test('Go 導入ブロックはダウンロードに失敗すると set -e で止まり、壊れたシンボリックリンクを作らない', () => {
+  // 実際のクラウドセッションで dl.google.com がブロックされたとき、set -e が無いと
+  // /usr/local/go/bin が実在しないまま ln -sf だけ成功し、「導入成功」に見える壊れた
+  // シンボリックリンクが残った（実測。go自体が無いのに go.log は正常終了扱いになっていた）
+  const [, body = ''] = apply(tempRepo()).stdout.split(/^-{20,}$/m);
+  const commentedLine = body.split('\n').find((l) => l.startsWith('# ( set -e;'));
+  assert.ok(commentedLine, 'set -e を含む Go 導入行が見つからない');
+
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'go-install-sim-'));
+  const fakeWgetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-wget-'));
+  fs.writeFileSync(path.join(fakeWgetDir, 'wget'), '#!/bin/sh\nexit 1\n');
+  fs.chmodSync(path.join(fakeWgetDir, 'wget'), 0o755);
+
+  const script = commentedLine
+    .slice(2)
+    .replace('<go.mod の go ディレクティブに合わせる。例: 1.26.5>', '1.26.5')
+    .replaceAll('/usr/local', base)
+    .replace('/opt/setup-log/go.log', path.join(base, 'go.log'))
+    .replace(/ &$/, '');
+
+  const r = spawnSync('bash', ['-c', script], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${fakeWgetDir}:${process.env.PATH}` },
+  });
+  assert.equal(r.status, 0, `サブシェルの失敗は || true で吸収されるはず: ${r.stderr}`);
+  assert.equal(
+    fs.existsSync(path.join(base, 'bin', 'go')),
+    false,
+    'ダウンロード失敗にもかかわらずシンボリックリンクが作られた（壊れたリンクの再発）',
+  );
 });

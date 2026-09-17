@@ -141,7 +141,7 @@ echo "----------------------------------------"
 RECOMMEND=()
 [ "$HAS_PLAYWRIGHT" = 1 ] && RECOMMEND+=("Playwright: プリインストールのブラウザと @playwright/test の要求版がずれるので、セッション初期化で npx playwright install を実行してください（@playwright/test を検出）")
 [ "$HAS_COMPOSE" = 1 ] && RECOMMEND+=("docker compose: Allowed domains に production.cloudfront.docker.com を足し、docker pull のブロックを有効化してください。ビルドでパッケージを取得するならプロキシ CA を渡す必要があります（注意事項を参照）")
-[ "$HAS_GO" = 1 ] && RECOMMEND+=("Go ツールチェーン: VM に Go はプリインストールされていません（npm/pip/uv は Node/Python が VM 側にあるため気づきにくいですが、Go だけは無い）。テンプレートの「Go を使うリポジトリ」ブロックのコメントを外し、go.mod の go ディレクティブに合わせて GOVER を書き換えてください。Allowed domains に go.dev を足す必要があります")
+[ "$HAS_GO" = 1 ] && RECOMMEND+=("Go ツールチェーン: VM に Go はプリインストールされていません（npm/pip/uv は Node/Python が VM 側にあるため気づきにくいですが、Go だけは無い）。テンプレートの「Go を使うリポジトリ」ブロックのコメントを外し、go.mod の go ディレクティブに合わせて GOVER を書き換えてください。Allowed domains に go.dev と dl.google.com の両方を足す必要があります（tarball の実体は dl.google.com から配信されるため、go.dev だけでは 403 で失敗します）")
 if [ "${#RECOMMEND[@]}" -gt 0 ]; then
     log "このリポジトリ向けの推奨:"
     for r in "${RECOMMEND[@]}"; do

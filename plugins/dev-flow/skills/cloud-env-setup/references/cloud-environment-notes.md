@@ -52,13 +52,14 @@ Setup script を混ぜずに済みます。
 | context7 MCP | 起動はするが、ツールを呼ぶと API の `context7.com` への CONNECT がプロキシに 403 で拒否される（既定の許可リストに無い） | Allowed domains に `context7.com` を足す |
 | 同名の MCP | Setup script がユーザー単位で登録した MCP と、リポジトリの `.mcp.json` に同名があると `claude mcp list` に重複の警告が出る。使われるのは1件で、ツールは動く | 動作に影響しないのでそのままでよい。消すならリポジトリの `.mcp.json` 側 |
 | Playwright | `/opt/pw-browsers` にプリインストールされたブラウザが、`@playwright/test` や playwright MCP の要求する版と違う | セッション初期化で `npx playwright install chromium chromium-headless-shell`、MCP は `npx @playwright/mcp@<版> install-browser chrome-for-testing` |
+| Go の公式配布物 | `go.dev/dl/` の tarball は `dl.google.com` からリダイレクト配信される。`go.dev` だけを Allowed domains に足しても `dl.google.com` が 403 CONNECT tunnel failed で落ち、`/usr/local/go/bin` が無いまま `ln -sf` だけ成功して壊れたシンボリックリンクが残る | Allowed domains に `go.dev` と `dl.google.com` の両方を足す。テンプレートの Go ブロックは `set -e` でダウンロード失敗時に `ln -sf` まで進ませない（cloud-env-setup スキルで実際にクラウドセッションを試し、404/403 ではなく壊れたシンボリックリンクという形で顕在化した） |
 
 ## Network access は Custom にして既定のリストを残す
 
 既定の Trusted に無いドメインを使うときは Custom にします。**「Also include default list of common package managers」に
 チェックを入れないと、書いたドメインしか通らなくなります。** 足す候補は、Docker Hub の配信元
 `production.cloudfront.docker.com`、Playwright のブラウザ配布元（`cdn.playwright.dev` /
-`playwright.download.prss.microsoft.com`）、context7 の API（`context7.com`）、Debian / Alpine 系イメージのビルドで使う `deb.debian.org` / `dl-cdn.alpinelinux.org`、業務 SaaS の API です。既定のリストの Linux ディストリビューションは Ubuntu だけで、`python:*-slim` などの Debian 系イメージの `apt-get update` は 403 になります（Microsoft Container Registry は既定に入っています）。
+`playwright.download.prss.microsoft.com`）、context7 の API（`context7.com`）、Debian / Alpine 系イメージのビルドで使う `deb.debian.org` / `dl-cdn.alpinelinux.org`、Go の公式配布物（`go.dev` と `dl.google.com` の両方）、業務 SaaS の API です。既定のリストの Linux ディストリビューションは Ubuntu だけで、`python:*-slim` などの Debian 系イメージの `apt-get update` は 403 になります（Microsoft Container Registry は既定に入っています）。
 
 ## GitHub の認証
 

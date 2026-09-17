@@ -75,8 +75,13 @@ XML
 # あるため気づきにくいが、Go だけは無い）。apt 版 golang-go は go.mod の要求より古いことが多いため、
 # 公式配布物で /usr/local/go に入れる。/usr/local/bin へシンボリックリンクするのは、Bash tool 等の
 # 非ログインシェルは /etc/profile.d を読まないため（profile 経由の PATH 追加は届かない）
-# ⚠ Allowed domains に go.dev を足す必要がある
-# ( GOVER=<go.mod の go ディレクティブに合わせる。例: 1.26.5>; wget -q "https://go.dev/dl/go${GOVER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz; rm -rf /usr/local/go; tar -C /usr/local -xzf /tmp/go.tar.gz; rm -f /tmp/go.tar.gz; ln -sf /usr/local/go/bin/go /usr/local/bin/go; ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt ) > /opt/setup-log/go.log 2>&1 || true &
+# ⚠ Allowed domains に go.dev と dl.google.com の両方を足す必要がある。tarball の実体は
+#   go.dev/dl/ からリダイレクトされた dl.google.com から配信され、go.dev だけを許可しても
+#   dl.google.com 側が 403 CONNECT tunnel failed で落ちる（2026-09 実測）
+# ⚠ set -e を先頭に置いているのは、ダウンロード失敗をここで止めないと /usr/local/go/bin が
+#   実在しないまま ln -sf だけ成功し、リンク先の無い壊れたシンボリックリンクが「導入成功」に
+#   見えてしまうため（実測。go.log に wget のエラーが残るので原因はそこから追える）
+# ( set -e; GOVER=<go.mod の go ディレクティブに合わせる。例: 1.26.5>; wget "https://go.dev/dl/go${GOVER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz; rm -rf /usr/local/go; tar -C /usr/local -xzf /tmp/go.tar.gz; rm -f /tmp/go.tar.gz; ln -sf /usr/local/go/bin/go /usr/local/bin/go; ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt ) > /opt/setup-log/go.log 2>&1 || true &
 
 # リポジトリの .mcp.json にも npx で起動する MCP を書く場合（1リポジトリだけのセッション・ローカル用）は、
 # 版を上の登録と揃え、各サーバーに "env": {"npm_config_prefer_offline": "true"} を付ける
