@@ -59,8 +59,26 @@ fi
 # ⚠ ALLOW_SECRETS は秘密スキャンだけを飛ばす。publish-scan は別の失敗モード
 #   （公開してはいけない固有名が外に出る＝取り消せない）なので巻き添えで無効化しない。
 #   publish-scan を飛ばすには ALLOW_PUBLISH=1 を明示する。
+#
+# ⚠ この hook プロセス自身の環境変数だけを見ていると、実際の運用形では効かない。
+#   ユーザー/Claude が打つのは `ALLOW_SECRETS=1 git push` や
+#   `export ALLOW_SECRETS=1 && git push` のように「コマンド文字列の中」に書く形だが、
+#   PreToolUse hook は tool_input.command という文字列を受け取って判定するだけで、
+#   その文字列を実行するわけではない。hook プロセスの環境は Claude Code 本体の
+#   プロセスから継承されるだけなので、これから実行される（まだ実行されていない）
+#   コマンド文字列側の代入はこの hook からは一切見えない
+#   （実測: `ALLOW_SECRETS=1 git push` と打ってもバイパスされず push がブロックされ続けた）。
+#   cd/pushd の移動先をコマンド文字列から拾っているのと同じ考え方で、
+#   ALLOW_SECRETS=1 / ALLOW_PUBLISH=1 もコマンド文字列側から拾う
+#   （hook プロセス自身の環境変数にたまたま乗っているケースも後方互換で見る）。
+has_bypass_flag() {
+  local name="$1"
+  [[ "${!name:-0}" == "1" ]] && return 0
+  echo "$COMMAND" | grep -qE "(^|[;&|[:space:]])(export[[:space:]]+)?${name}=1([;&|[:space:]]|\$)"
+}
+
 SKIP_SECRET=0
-if [[ "${ALLOW_SECRETS:-0}" == "1" ]]; then
+if has_bypass_flag ALLOW_SECRETS; then
   echo "[git-secret-guard] ALLOW_SECRETS=1 により秘密スキャンをスキップ" >&2
   SKIP_SECRET=1
 fi
@@ -99,8 +117,10 @@ done < <(echo "$COMMAND" | command grep -oE '\b(cd|pushd)[[:space:]]+("[^"]+"|'"
 SECRET_SCAN="${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.sh"
 PUBLISH_SCAN="${CLAUDE_PLUGIN_ROOT}/scripts/publish-scan.sh"
 
-if [[ "${ALLOW_PUBLISH:-0}" == "1" ]]; then
+SKIP_PUBLISH=0
+if has_bypass_flag ALLOW_PUBLISH; then
   echo "[git-secret-guard] ALLOW_PUBLISH=1 により公開前スキャンをスキップ" >&2
+  SKIP_PUBLISH=1
 fi
 
 SEEN=""
@@ -116,7 +136,7 @@ for d in "${CANDIDATES[@]}"; do
   fi
 
   # 2. 公開前スキャン（remote が [public-repos] に載っているリポジトリだけ）
-  if [[ "${ALLOW_PUBLISH:-0}" != "1" ]]; then
+  if [[ $SKIP_PUBLISH -eq 0 ]]; then
     ( cd "$ROOT" && bash "$PUBLISH_SCAN" ) || STATUS=$BLOCK
   fi
 done

@@ -109,7 +109,7 @@ git 全体の history は対象外（速度のため）。
   `fake`, `dummy`, `sample`, `change-me` / `changeme`, `XXXX`, `0000...`, `REDACTED`
 - 変数参照: `$VAR`, `${VAR}`
 - HTML/JSON: `name="password"`, `description.*password`
-- URL / SHA / base64 ヘッダ、`integrity` / `checksum`（パターン3のみ。後述の限界あり）
+- URL / SHA / base64 ヘッダ、`integrity` / `checksum`、`sha(1|256|384|512)-` 接頭辞のSRI形式ハッシュ値そのもの（パターン3のみ。後述の限界あり）
 
 **パターン2の除外判定は「代入された値そのもの」に対してだけ行う（行全体ではない）。**
 当初は `grep -viE` で行全体を対象にしていたが、敵対的検証で実機再現された: 値とは
@@ -139,6 +139,11 @@ your-/replace-with/example.）は、前後を英字で挟まれていない位�
   または変数名に `hash` を含む代入（`PASSWORD_HASH = "..."` 等。値そのものが秘密ではない）。
   `hash` はキーワードと直接隣接する複合語（間はアンダースコア1個まで）に限る。
   `HASHICORP_TOKEN` のように「hash と TOKEN がたまたま同じ行にある」だけでは除外しない
+- **SRI形式のハッシュ値（`sha512-<base64>` 等）**: npm/yarn の package-lock.json / yarn.lock の
+  `integrity` フィールドはこの形。当初は「`integrity` という語が同じ行にあること」を除外条件に
+  していたが、キーと値が別行に分かれた JSON（フォーマッタ等で発生しうる）だと \"integrity\" の
+  語が値の行に無くなり誤検出していた（ユーザー報告・実測）。値そのものの形
+  （`sha(1|256|384|512)-` 接頭辞）を直接見るようにしたので、キーが同じ行にあるかに依存しない
 - **テスト/フィクスチャファイルの追加行**: ファイルパスが `tests?/` `specs?/` `__tests__/`
   `__mocks__/` `mocks?/` `fixtures?/` `__fixtures__/` `testdata/` 配下、または
   `*.test.*` `*.spec.*` `*_test.*` `*_spec.*` に一致するファイル。ダミー値・フィクスチャで
@@ -196,7 +201,22 @@ git push を中止しました。
 ALLOW_SECRETS=1 git push origin main
 ```
 
+または:
+
+```
+export ALLOW_SECRETS=1 && git push origin main
+```
+
 このセッション/コマンドだけ secret-guard をスキップ。**使い方を間違えると意味がない**ので、目視確認のうえ使うこと。
+
+**なぜコマンド文字列に書く形で効くのか。** PreToolUse hook（`pre-bash-push-check.sh`）は
+`tool_input.command` という**文字列**を受け取って判定するだけで、その文字列を実行するわけでは
+ない。hook プロセス自身の環境は Claude Code 本体のプロセスから継承されるだけなので、
+これから実行される（まだ実行されていない）コマンド文字列側の代入は、素朴には hook から
+見えない（ユーザー報告・実測: `ALLOW_SECRETS=1 git push` と打ってもバイパスされなかった）。
+これに対応するため、hook は cd/pushd の移動先をコマンド文字列から拾っているのと同じ考え方で、
+`ALLOW_SECRETS=1` / `ALLOW_PUBLISH=1` もコマンド文字列側（`VAR=1 cmd` / `export VAR=1 && cmd`
+の形）から読み取る。無関係な変数名（`MY_ALLOW_SECRETS=1` 等）には反応しない。
 
 ### B. plugin を一時 uninstall
 

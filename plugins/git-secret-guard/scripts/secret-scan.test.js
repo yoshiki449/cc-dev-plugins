@@ -139,6 +139,59 @@ test('非テストファイルの本物らしい40文字以上の英数字は引
 });
 
 // ---------------------------------------------------------------------------
+// 誤検出の修正: package-lock.json の sha512 integrity ハッシュ（ユーザー報告）
+// ---------------------------------------------------------------------------
+// 報告された誤検出: package-lock.json の "integrity" キーと値が別の行に分かれると
+// （フォーマッタ・手動整形等で発生しうる）、"integrity" という語が値の行に無くなり、
+// 値そのもの（sha512-<base64>）が「40文字以上の長い英数字」として検出されていた。
+// 既存の "integrity" 除外はキーと値が同じ行にあることに依存していたため、値の形
+// （sha512- 接頭辞）そのものを見るよう直した。
+
+test('SRI形式（sha512-<base64>）のハッシュ値は、キーが同じ行に無くても誤検出しない', () => {
+  const repo = mkRepo({
+    'package-lock.json': [
+      '{',
+      '  "packages": {',
+      '    "node_modules/foo": {',
+      '      "integrity":',
+      `        "sha512-${'a1B2c3D4'.repeat(11)}=="`,
+      '    }',
+      '  }',
+      '}',
+      '',
+    ].join('\n'),
+  });
+  const r = run(repo);
+  assert.strictEqual(r.status, 0, `SRI 形式のハッシュ値を誤検出した\n${r.stderr}`);
+});
+
+test('キーと同じ行にある通常の integrity 行（実際の npm 出力形）も誤検出しない（回帰）', () => {
+  const repo = mkRepo({
+    'package-lock.json':
+      `      "integrity": "sha512-${'a1B2c3D4'.repeat(11)}==",\n`,
+  });
+  const r = run(repo);
+  assert.strictEqual(r.status, 0, `通常形の integrity 行を誤検出した\n${r.stderr}`);
+});
+
+test('sha512- を前置しても、既知トークン prefix や変数代入としての検出はすり抜けない', () => {
+  // パターン3の sha512- 除外は「値の形」だけを見る。本物のトークンや
+  // PASSWORD/TOKEN への代入として書かれた値は、sha512- を前に付けても
+  // パターン1・パターン2でそれぞれ引き続き検出されることを固定する。
+  const repoToken = mkRepo({ 'conf.py': `${K.token} = "sha512-ghp_${'A'.repeat(36)}"\n` });
+  const rToken = run(repoToken);
+  assert.strictEqual(rToken.status, 1, 'sha512- を前置した本物のトークンを見逃した');
+  assert.match(rToken.stderr, /SaaS\/Cloud トークン形式/);
+
+  const repoPassword = mkRepo({
+    'settings.py': kv(K.password, 'sha512-' + FAKE_PASSWORD_VALUE) + '\n',
+  });
+  const rPassword = run(repoPassword);
+  assert.strictEqual(rPassword.status, 1, 'sha512- を前置した PASSWORD 代入を見逃した');
+  assert.match(rPassword.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+// ---------------------------------------------------------------------------
 // 誤検出の修正: テスト/フィクスチャファイルの変数代入・長い英数字
 // ---------------------------------------------------------------------------
 

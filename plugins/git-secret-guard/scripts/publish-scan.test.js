@@ -643,3 +643,55 @@ test('AC33: push 済みのコミットは走査しない', () => {
   const all = run(['--all'], { cwd: work, denylist });
   assert.strictEqual(all.status, 1, '--all が履歴全体を見ていない');
 });
+
+// ---------------------------------------------------------------------------
+// AC34-AC37: バイパスフラグをコマンド文字列側からも読む（ユーザー報告）
+// ---------------------------------------------------------------------------
+// 報告された不具合: `ALLOW_SECRETS=1 git push` と打ってもバイパスされなかった。
+// PreToolUse hook は tool_input.command という「文字列」を受け取って判定するだけで、
+// その文字列を実行するわけではない。hook プロセス自身の環境は Claude Code 本体の
+// プロセスから継承されるだけなので、これから実行される（まだ実行されていない）
+// コマンド文字列側の代入は、AC17/AC18/AC24 のように直接 env として渡さない限り
+// hook からは見えない。実際にユーザー/Claude が打つのはコマンド文字列に書く形なので、
+// cd/pushd の移動先と同じようにコマンド文字列側からも拾えることを固定する。
+
+test('AC34: ALLOW_SECRETS=1 をコマンド文字列のプレフィックスとして書いても秘密スキャンをバイパスできる', () => {
+  const denylist = mkDenylist(['me/pub'], DENY);
+  const repo = mkRepo('https://github.com/me/other.git', {
+    'conf.py': 'TOKEN = "ghp_' + 'A'.repeat(36) + '"\n',
+  });
+
+  const blocked = runHook('git push origin main', repo, denylist);
+  assert.strictEqual(blocked.status, 2, '前提: フラグ無しではブロックされること');
+
+  const bypassed = runHook('ALLOW_SECRETS=1 git push origin main', repo, denylist);
+  assert.strictEqual(bypassed.status, 0, 'コマンド文字列側の ALLOW_SECRETS=1 が効いていない');
+});
+
+test('AC35: export ALLOW_SECRETS=1 && git push の形でもバイパスできる', () => {
+  const denylist = mkDenylist(['me/pub'], DENY);
+  const repo = mkRepo('https://github.com/me/other.git', {
+    'conf.py': 'TOKEN = "ghp_' + 'A'.repeat(36) + '"\n',
+  });
+  const r = runHook('export ALLOW_SECRETS=1 && git push origin main', repo, denylist);
+  assert.strictEqual(r.status, 0, 'export 形式の ALLOW_SECRETS=1 が効いていない');
+});
+
+test('AC36: 無関係な変数名（MY_ALLOW_SECRETS=1 等）はバイパスとして扱わない', () => {
+  // コマンド文字列から拾う判定を緩めすぎると、たまたま似た名前の変数を
+  // 書いただけで秘密スキャンごと無効化できてしまう。
+  const denylist = mkDenylist(['me/pub'], DENY);
+  const repo = mkRepo('https://github.com/me/other.git', {
+    'conf.py': 'TOKEN = "ghp_' + 'A'.repeat(36) + '"\n',
+  });
+  const r = runHook('MY_ALLOW_SECRETS=1 git push origin main', repo, denylist);
+  assert.strictEqual(r.status, 2, '無関係な変数名なのにバイパスしてしまった');
+});
+
+test('AC37: ALLOW_PUBLISH=1 もコマンド文字列側のプレフィックスから読める', () => {
+  const denylist = mkDenylist(['me/pub'], DENY);
+  const repo = mkRepo('https://github.com/me/pub.git', { 'a.md': 'acme-corp\n' });
+  const r = runHook('ALLOW_PUBLISH=1 git push origin main', repo, denylist);
+  assert.strictEqual(r.status, 0, 'コマンド文字列側の ALLOW_PUBLISH=1 が効いていない');
+  assert.match(r.stderr, /ALLOW_PUBLISH=1/);
+});

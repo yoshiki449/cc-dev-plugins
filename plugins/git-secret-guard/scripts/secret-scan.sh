@@ -183,8 +183,15 @@ done < <(grep -nE "$DETECT2" "$TMP_NONTEST" 2>/dev/null) > "$VIO_VARS"
 # "PASSWORD_HASH" の "_HASH" 側で境界が成立せず、除外したいケースを取りこぼす。
 # 一方 "HASHICORP_TOKEN" の "HASH" は右側が英字 "I" で続くので、この境界条件
 # では一致しない（除外されない＝本物の値なら引き続き検出される）。
+#
+# `sha(1|256|384|512)-` は npm/yarn の SRI（Subresource Integrity）形式の値そのもの
+# （例: package-lock.json の "integrity": "sha512-....=="）に必ず付く接頭辞。
+# "integrity" という語をキーと同じ行に要求する既存の除外だけでは、キーと値が
+# 別行に分かれた JSON（`"integrity":\n  "sha512-...=="`）で "integrity" が
+# 値の行に無くなり誤検出していた（実測）。値そのものの形（sha512- 接頭辞）を
+# 直接見れば、キーが同じ行にあるかどうかに依存しない。
 grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP_NONTEST" 2>/dev/null \
-  | grep -viE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|(^|[^A-Za-z])hash([^A-Za-z]|$)|\*{2,}|redacted|integrity|checksum' \
+  | grep -viE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|(^|[^A-Za-z])hash([^A-Za-z]|$)|\*{2,}|redacted|integrity|checksum|sha(1|256|384|512)-' \
   | head -50 > "$VIO_LONG" 2>/dev/null || true
 
 # ---- 集計 ----
