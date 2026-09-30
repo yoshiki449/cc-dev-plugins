@@ -1,0 +1,143 @@
+name: CI
+
+# ci-standard: v1
+#
+# 標準構成（dev-flow の ci-standard スキル。根拠は references/rationale.md）。
+#   - PR・push は lint / unit のみ。E2E は週 1 回の定期実行と手動実行でだけ走らせる。
+#     E2E で見つかる不具合は最大 1 週間遅れる。UI・認証・DB スキーマを変える PR は、
+#     マージ前に Actions タブの Run workflow（対象ブランチを選択）で E2E を実行すること。
+#   - E2E の結果は notify-e2e job が Google Chat に通知する。Webhook URL は key / token を
+#     含むためコードに書かず、Secret GOOGLE_CHAT_WEBHOOK_URL から読む。
+#   - docs 系のみの変更は起動しない。ブランチ保護で required status checks を設定している
+#     場合、スキップされた check は pending のままになりマージできない（その場合は
+#     paths-ignore をやめ、変更検知 job + 集約 job 方式に切り替える）。
+#
+# 本番影響が大きいリポジトリは、この標準を外す例外にできる。その場合は次の行を追加する:
+#   # ci-standard-exception: <例外にする理由>
+#
+# TODO(ci-standard): デフォルトブランチが main でなければ branches を直す。
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agent/**"
+      - ".claude/**"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agent/**"
+      - ".claude/**"
+  schedule:
+    # 毎週月曜 09:17 JST（cron は UTC）。正時を避けて起動の遅延を抑える。
+    # schedule はデフォルトブランチの ci.yml だけが対象。
+    - cron: "17 0 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  # PR は PR ごと、それ以外は commit ごとの group にする。ref 単位の group だと
+  # 連続マージ時に先の main 検証が cancel-in-progress で消える。
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # TODO(ci-standard): lint / unit-test をリポジトリの実コマンドに置き換える。
+  #   job を足す・名前を変えるときは e2e と notify-e2e の needs も揃える。
+  #   これらの job には `if:` を付けない（PR・push の品質ゲートなので毎回走らせる）。
+  lint:
+    name: Lint
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "TODO(ci-standard) lint を実行する"
+
+  unit-test:
+    name: Unit test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "TODO(ci-standard) unit test を実行する"
+
+  e2e:
+    name: E2E (${{ matrix.browser }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # 週次・手動の run だけで実行する。PR・push では skipped になる。
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [lint, unit-test]
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      # TODO(ci-standard): E2E に必要なセットアップ（依存のインストール、DB 等の services）を足す。
+      - name: Run Playwright E2E (${{ matrix.browser }})
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: npx playwright test --project "$BROWSER"
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: playwright-report
+          if-no-files-found: ignore
+
+  notify-e2e:
+    # 週次・手動の run だけで、E2E の成否にかかわらず結果を Google Chat に通知する。
+    # always() が無いと、E2E 失敗時や前段失敗による E2E の skipped 時に本 job も
+    # skipped になり、失敗を通知できない。
+    # この job のスクリプトは templates/notify-e2e.sh と同一に保つ（validate_ci.py が検査する）。
+    name: Notify E2E result (Google Chat)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions: {}
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: [lint, unit-test, e2e]
+    steps:
+      - name: Post result to Google Chat
+        shell: bash
+        env:
+          WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          REPO_NAME: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Secret 未設定を黙ってスキップすると、通知されないことに気づけない。
+          if [ -z "${WEBHOOK_URL:-}" ]; then
+            echo "::error::Secret GOOGLE_CHAT_WEBHOOK_URL が未設定です（Settings > Secrets and variables > Actions で登録してください）"
+            exit 1
+          fi
+          # 結果は needs の JSON から取る。前段の job 名がリポジトリごとに違っても同じスクリプトで動く。
+          e2e_result=$(jq -r '.e2e.result' <<<"$NEEDS_JSON")
+          others=$(jq -r 'to_entries | map(select(.key != "e2e")) | map("\(.key)=\(.value.result)") | join(" / ")' <<<"$NEEDS_JSON")
+          case "$e2e_result" in
+            success)   icon="✅"; label="成功" ;;
+            failure)   icon="❌"; label="失敗" ;;
+            cancelled) icon="⚠️"; label="キャンセル" ;;
+            skipped)   icon="⚠️"; label="未実行（前段の job が失敗）" ;;
+            *)         icon="⚠️"; label="不明（$e2e_result）" ;;
+          esac
+          case "$EVENT_NAME" in
+            schedule) trigger="定期実行（毎週）" ;;
+            *)        trigger="手動実行" ;;
+          esac
+          text=$(printf '%s %s E2E %s: *%s*\n実行契機: %s\nブランチ: %s / コミット: %s\n前段: %s\n詳細（Playwright レポートは Artifacts）: %s' \
+            "$icon" "$REPO_NAME" "$label" "$e2e_result" "$trigger" "$REF_NAME" "${SHA:0:7}" "$others" "$RUN_URL")
+          # jq で組み立てるのは、ブランチ名の引用符・改行で JSON が壊れないようにするため。
+          payload=$(jq -n --arg text "$text" '{text: $text}')
+          # --fail-with-body が無いと、HTTP 403（token 誤り等）でも curl の終了コードが 0 になり通知失敗に気づけない。
+          # 応答本文は捨てる（メッセージ内容が返るだけで、ログに残す必要がない）。
+          curl -sS --fail-with-body --max-time 30 \
+            --retry 2 --retry-delay 2 --retry-all-errors \
+            -H 'Content-Type: application/json; charset=UTF-8' \
+            -o /dev/null -d "$payload" "$WEBHOOK_URL"
