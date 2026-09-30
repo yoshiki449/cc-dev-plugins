@@ -12,7 +12,7 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `scripts/qc-overlay.sh --phase <phase>` | overlay の適用状況を JSON 1 行で返す。判定材料は `overlay_present` ではなく `overlay_applied` |
 | `reference/test-tier-model.md` | 自動／手動の振り分け基準（overlay の有無に依存しない。観点の網羅リストは overlay 側） |
 | `reference/subagent-output-contract.md` | サブエージェント成果物の受け渡し契約（起動プロンプト項目・呼び出し側の義務）。消費者は下表 |
-| `reference/requirement-elicitation.md` | 要求の深掘り手順（要求カード・曖昧さの検出・解決策の妥当性チェック・終了条件）。消費者は下表 |
+| `reference/requirement-elicitation.md` | 要求の深掘り手順（要求カード・曖昧さの検出・解決策の妥当性チェック・終了条件・問いの書式・論点の仕分け・本文に書いてよいもの）。消費者は下の2表 |
 | `reference/scope-discipline.md` | 実装・修正を頼まれた範囲で仕上げるための一文（Opus 5 の範囲拡大対策）。消費者は下表 |
 | `reference/advisor-policy.md` | サブエージェントに advisor をいつ呼ばせるかと、メインセッションを `/clear` させる区切り。消費者は下表 |
 | `scripts/context-size.mjs [--threshold N]` | 現在のメインセッションのコンテキスト量を JSON 1 行で返す（既定の閾値 400K。判定不能でも exit 0） |
@@ -41,6 +41,21 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `dev-plan` | `### A1. 要件理解` | `### A1.8. 要求の確定 ⚠ スキップ不可` |
 | `auto-spec` | `### S1. ヒアリング` | `### S1. ヒアリング` |
 | `dev-fix` | `### F1. 修正希望の整理` | `### F1. 修正希望の整理` |
+
+## 問いの書式・論点の仕分け・本文に書いてよいものの消費者
+
+`reference/requirement-elicitation.md` の「問いの書式」（`question-format`）「論点の仕分け」（`triage`）「本文に書いてよいもの」（`evidence`）も、**各ファイルに複製で置く**。理由は上の表と同じ。agent（`spec-writer` / `designer`）は SKILL.md 経由でなくサブエージェントとして単独で動くので、reference を読まない前提で複製が要る。
+
+表のパスは `plugins/dev-flow/` からの相対。`-` はそのファイルがその節を持たない（持たないことも allowlist として `requirement-elicitation.test.js` が検査する）。
+
+| ファイル | question-format の節 | triage の節 | evidence の節 |
+|---|---|---|---|
+| `skills/dev-plan/SKILL.md` | `### A1. 要件理解` | `### A1.5. ブラインドスポットパス` | `### A7. Issue 作成` |
+| `skills/auto-spec/SKILL.md` | `### S1. ヒアリング` | `### S3. 人間レビュー（TP1）` | `### S4. 確定` |
+| `skills/auto-design/SKILL.md` | `### D2. 人間レビュー（TP2）` | `### D2. 人間レビュー（TP2）` | `### D3. 確定` |
+| `skills/dev-fix/SKILL.md` | `### F1. 修正希望の整理` | `-` | `-` |
+| `agents/spec-writer.md` | `-` | `## 信頼度・厳密さの方針` | `## 信頼度・厳密さの方針` |
+| `agents/designer.md` | `-` | `## 信頼度・厳密さの方針` | `## 信頼度・厳密さの方針` |
 
 ## スコープ規律の消費者
 
