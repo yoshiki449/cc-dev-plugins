@@ -75,3 +75,58 @@ test('AC5: 統合済みの dev-videos はモデルから自動起動しない', 
   assert.match(fm, /^disable-model-invocation: true$/m);
   assert.doesNotMatch(fm, /^user-invocable: false$/m);
 });
+
+// ---- 仕様に無い、ユーザーに見える挙動の例外（scope-discipline-gap / scope-discipline-gap-loop） ----
+// 範囲規律の一文の「曖昧な点は解釈する」だけでは、文言・並び順のように作業量が変わらない細部が確認から漏れる。
+// 例外は範囲規律の一文を変えずに重ねる。dev-loop は途中で止まらないので別文（記録して境界確認で提示）。
+
+function markedBy(md, name, where) {
+  const m = md.match(new RegExp(`<!-- ${name} -->\\n([\\s\\S]*?)\\n[ \\t]*<!-- /${name} -->`));
+  assert.ok(m, `${where}: ${name} のマーカーが見つからない`);
+  return m[1].split('\n').map((l) => l.replace(/^\s+/, '')).filter(Boolean);
+}
+
+const GAP_KIND = { 'dev-implement': 'scope-discipline-gap', 'dev-fix': 'scope-discipline-gap', 'dev-loop': 'scope-discipline-gap-loop' };
+
+test('AC5: 例外ブロックの持ち主が、範囲規律の消費者と過不足なく対応している', () => {
+  // 新しい消費者を範囲規律の表に足したら、どちらの例外を持つかを決めさせる（この対応表を更新させる）。
+  assert.deepEqual(consumers().map((c) => c.skill).sort(), Object.keys(GAP_KIND).sort());
+});
+
+test('AC6: 全消費者の例外ブロックが正準と byte-identical で、取り違えていない', () => {
+  for (const c of consumers()) {
+    const kind = GAP_KIND[c.skill];
+    const other = kind === 'scope-discipline-gap' ? 'scope-discipline-gap-loop' : 'scope-discipline-gap';
+    const body = section(read(skillMd(c.skill)), c.section);
+    assert.deepEqual(markedBy(body, kind, c.skill), markedBy(read(REFERENCE), kind, 'reference'), `${c.skill} の ${kind} が reference と食い違っている`);
+    assert.ok(!body.includes(`<!-- ${other} -->`), `${c.skill} に ${other} が混ざっている（止まる版と記録する版の取り違え）`);
+  }
+});
+
+test('AC7: 正準の例外が「見える挙動は解釈せず、上の一文より優先」の極性を持つ', () => {
+  const gap = markedBy(read(REFERENCE), 'scope-discipline-gap', 'reference');
+  assert.equal(gap.length, 3);
+  assert.match(gap[0], /上の「曖昧な点は解釈する」の対象外。解釈して進めず、その場で止めて AskUserQuestion で聞く。この行は上の一文より優先する$/);
+  assert.match(gap[1], /^- 質問には推奨案と根拠を付ける/);
+  assert.match(gap[2], /^- ユーザーに見えない内部の判断/);
+  const loop = markedBy(read(REFERENCE), 'scope-discipline-gap-loop', 'reference');
+  assert.equal(loop.length, 3);
+  assert.match(loop[0], /dev-loop は途中で止まらないので、暫定案で進め、進捗ファイルの `## 要確認` に「判断内容／暫定案／根拠」を1件1行で追記する。この行は上の一文より優先する$/);
+  assert.match(loop[1], /L1\.5d の AskUserQuestion の本文に全件を転記し、「完了」を選ぶ前に各件がユーザーの意図に合っているかを確認する/);
+});
+
+test('AC8: dev-loop の進捗ファイルと境界確認が「要確認」を受け止める', () => {
+  const md = read(skillMd('dev-loop'));
+  assert.match(md, /^## 要確認（仕様に無い、ユーザーに見える挙動の暫定案。/m, '進捗ファイルの雛形に ## 要確認 が無い');
+  assert.match(section(md, '#### L1.5d 境界確認 AskUserQuestion'), /\*\*要確認の提示\*\*: 進捗ファイルの `## 要確認` が1件以上あるときは、AskUserQuestion の本文に全件/);
+});
+
+test('AC9: 範囲規律の正準の文（曖昧な点の扱い）は変えていない', () => {
+  // 例外は重ねるだけで、Anthropic の移行ガイド由来の一文そのものは触らない。
+  assert.deepEqual(marked(read(REFERENCE), 'reference'), [
+    '- 頼まれた範囲で仕上げる。曖昧な点は注意深い同僚のように解釈し、読み方によって作業が大きく変わるときだけ確認する',
+    '- より良い方法があると判断したら一文で伝え、依頼どおりに進める。範囲を黙って広げも狭めもしない',
+    '- 終わっていない部分があれば完了と言わず、終えた部分と、残りとその理由を書く',
+  ]);
+});
+

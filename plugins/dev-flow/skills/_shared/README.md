@@ -57,6 +57,18 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `agents/spec-writer.md` | `-` | `## 信頼度・厳密さの方針` | `## 信頼度・厳密さの方針` |
 | `agents/designer.md` | `-` | `## 信頼度・厳密さの方針` | `## 信頼度・厳密さの方針` |
 
+## 具体例・細部の点検・操作フロー確認モックの消費者
+
+`reference/requirement-elicitation.md` の「具体例による確認」（`examples`）「細部の点検」（`detail-checklist`）「操作フロー確認モック」（`flow-mock`）も、**各ファイルに複製で置く**。理由は上の2表と同じ。表の読み方も同じで、パスは `plugins/dev-flow/` からの相対、`-` は持たない行（持たないことも `requirement-elicitation.test.js` が検査する）。
+
+| ファイル | examples の節 | detail-checklist の節 | flow-mock の節 |
+|---|---|---|---|
+| `skills/dev-plan/SKILL.md` | `### A3.5. 具体例による確認 ⚠ スキップ不可` | `### A1.5. ブラインドスポットパス` | `### A5.5. 操作フロー確認モック（画面変更を伴うとき）` |
+| `skills/auto-spec/SKILL.md` | `### S3. 人間レビュー（TP1）` | `### S1. ヒアリング` | `-` |
+| `skills/auto-design/SKILL.md` | `### D2. 人間レビュー（TP2）` | `-` | `### D1.7. 操作フロー確認モック（画面変更を伴うとき）` |
+| `agents/spec-writer.md` | `## 信頼度・厳密さの方針` | `## 信頼度・厳密さの方針` | `-` |
+| `agents/designer.md` | `## 信頼度・厳密さの方針` | `## 信頼度・厳密さの方針` | `-` |
+
 ## スコープ規律の消費者
 
 `reference/scope-discipline.md` の正準の文は、**各 SKILL.md に複製で置く**（理由は要求の深掘り手順と同じ）。`scripts/scope-discipline.test.js` がこの表と実ファイルを突き合わせる。
@@ -66,6 +78,10 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `dev-implement` | `## 手順` |
 | `dev-fix` | `### F4. ソースコードの修正` |
 | `dev-loop` | `#### L1.2 implement または fix を実行` |
+
+## スコープ規律の例外（仕様に無い、ユーザーに見える挙動）の消費者
+
+`reference/scope-discipline.md` の例外ブロックは、上の表と**同じ3スキル**に複製で置く。`dev-implement` と `dev-fix` は止まって聞く（`scope-discipline-gap`）。`dev-loop` は途中で止まらない設計なので、記録して境界確認で提示する（`scope-discipline-gap-loop`）。`scripts/scope-discipline.test.js` が、上の表の全スキルにどちらかが置かれていること、取り違えていないことを検査する。**新しい消費者を上の表に足したら、どちらの例外を持つかも決めること**。
 
 ## advisor の扱いの消費者
 

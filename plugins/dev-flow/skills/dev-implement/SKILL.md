@@ -55,6 +55,14 @@ adversarial-verifier は overlay の固定位置を自分で読む（実行時�
 - 終わっていない部分があれば完了と言わず、終えた部分と、残りとその理由を書く
 <!-- /scope-discipline -->
 
+**仕様に無い、ユーザーに見える挙動**（上の「解釈して進める」の例外。理由は [スコープ規律](../_shared/reference/scope-discipline.md)）:
+
+<!-- scope-discipline-gap -->
+- 仕様（Issue・DESIGN・引継書）に書かれていない判断のうち、ユーザーに見える挙動（画面の文言・表示・エラー時の挙動・並び順・権限・データの残り方・削除の可否）に関わるものは、上の「曖昧な点は解釈する」の対象外。解釈して進めず、その場で止めて AskUserQuestion で聞く。この行は上の一文より優先する
+- 質問には推奨案と根拠を付ける（書式は要求の深掘り手順の「問いの書式」）。決まった内容は Deviations に「ユーザー確認済み」と書く
+- ユーザーに見えない内部の判断（名前・内部の分割・既存パターンに沿った選び方）は、既存コードを根拠に決めて Deviations に1行残す
+<!-- /scope-discipline-gap -->
+
 > **フェーズ開始時の共通前処理**: `mkdir -p .agent && git branch --show-current > .agent/.dev-flow-active` を実行してフェーズマーカーを書き込む（suggest-dev-phase hook のフェーズ想起案内を沈黙させる。`/dev-ship` E7 が掃除する）
 
 ### Step 0: 引継書の読み込み

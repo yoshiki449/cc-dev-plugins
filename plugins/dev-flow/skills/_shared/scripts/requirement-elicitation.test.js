@@ -127,16 +127,20 @@ test('AC9: 全消費者から reference へのリンクが生きている', () =
 // 3つとも正準は reference、複製先は README の「問いの書式・論点の仕分け・本文に書いてよいものの消費者」表。
 
 const PLUGIN = path.join(SKILLS, '..');
-const KINDS = ['question-format', 'triage', 'evidence'];
-const CONSUMER2_SECTION = '## 問いの書式・論点の仕分け・本文に書いてよいものの消費者';
 
-function consumers2() {
-  return section(read(README), CONSUMER2_SECTION)
+/** README の表を読む。`| \`file\` | \`節\` | ... |` の行だけを拾い、列名 kinds の順に割り当てる。 */
+function tableRows(sectionName, kinds) {
+  const cell = '\\s*`([^`]+)`\\s*\\|';
+  const re = new RegExp('^\\|' + cell + kinds.map(() => cell).join(''));
+  return section(read(README), sectionName)
     .split('\n')
-    .map((l) => l.match(/^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|/))
+    .map((l) => l.match(re))
     .filter(Boolean)
-    .map((m) => ({ file: m[1], 'question-format': m[2], triage: m[3], evidence: m[4] }));
+    .map((m) => Object.fromEntries([['file', m[1]], ...kinds.map((k, i) => [k, m[i + 2]])]));
 }
+
+const TABLE2 = { section: '## 問いの書式・論点の仕分け・本文に書いてよいものの消費者', kinds: ['question-format', 'triage', 'evidence'] };
+const TABLE3 = { section: '## 具体例・細部の点検・操作フロー確認モックの消費者', kinds: ['examples', 'detail-checklist', 'flow-mock'] };
 
 const canonicalLines = (kind) => marked(read(REFERENCE), `requirement-elicitation:${kind}`, 'reference');
 
@@ -148,9 +152,36 @@ function mdFilesUnder(dir) {
   });
 }
 
+/** 表に載る全ファイルの複製が正準と byte-identical で、表に無いファイルには複製が無いことを検査する。 */
+function assertMirrors(table, kind) {
+  const canonical = canonicalLines(kind);
+  const listed = new Set();
+  for (const c of tableRows(table.section, table.kinds)) {
+    const md = read(path.join(PLUGIN, c.file));
+    const marker = `<!-- requirement-elicitation:${kind} -->`;
+    const count = md.split(marker).length - 1;
+    if (c[kind] === '-') {
+      assert.equal(count, 0, `${c.file} は ${kind} を持たない行なのにマーカーがある`);
+      continue;
+    }
+    assert.equal(count, 1, `${c.file}: ${kind} のマーカーが ${count} 個（1個のはず）`);
+    listed.add(path.resolve(PLUGIN, c.file));
+    assert.deepEqual(
+      marked(section(md, c[kind]), `requirement-elicitation:${kind}`, `${c.file} / ${c[kind]}`),
+      canonical,
+      `${c.file} の ${kind} が reference と食い違っている。両方を同時に直すこと`
+    );
+  }
+  // 表に載せていない場所に複製が増えると、正準を直しても古いまま動く。
+  const stray = mdFilesUnder(PLUGIN)
+    .filter((f) => f !== REFERENCE && read(f).includes(`<!-- requirement-elicitation:${kind} -->`))
+    .filter((f) => !listed.has(f));
+  assert.deepEqual(stray, [], `表に無いファイルに ${kind} の複製がある`);
+}
+
 test('AC10: 消費者表2の対象ファイルが allowlist と一致する', () => {
   // allowlist。denylist（「このファイルが無いこと」）だと、別のファイルに複製が置かれた瞬間に素通りする。
-  const files = consumers2().map((c) => c.file).sort();
+  const files = tableRows(TABLE2.section, TABLE2.kinds).map((c) => c.file).sort();
   assert.deepEqual(files, [
     'agents/designer.md',
     'agents/spec-writer.md',
@@ -161,31 +192,9 @@ test('AC10: 消費者表2の対象ファイルが allowlist と一致する', ()
   ]);
 });
 
-for (const kind of KINDS) {
+for (const kind of TABLE2.kinds) {
   test(`AC11(${kind}): 表に載る全ファイルの該当節が正準と byte-identical で、表に無いファイルは複製を持たない`, () => {
-    const canonical = canonicalLines(kind);
-    const listed = new Set();
-    for (const c of consumers2()) {
-      const md = read(path.join(PLUGIN, c.file));
-      const marker = `<!-- requirement-elicitation:${kind} -->`;
-      const count = md.split(marker).length - 1;
-      if (c[kind] === '-') {
-        assert.equal(count, 0, `${c.file} は ${kind} を持たない行なのにマーカーがある`);
-        continue;
-      }
-      assert.equal(count, 1, `${c.file}: ${kind} のマーカーが ${count} 個（1個のはず）`);
-      listed.add(path.resolve(PLUGIN, c.file));
-      assert.deepEqual(
-        marked(section(md, c[kind]), `requirement-elicitation:${kind}`, `${c.file} / ${c[kind]}`),
-        canonical,
-        `${c.file} の ${kind} が reference と食い違っている。両方を同時に直すこと`
-      );
-    }
-    // 表に載せていない場所に複製が増えると、正準を直しても古いまま動く。
-    const stray = mdFilesUnder(PLUGIN)
-      .filter((f) => f !== REFERENCE && read(f).includes(`<!-- requirement-elicitation:${kind} -->`))
-      .filter((f) => !listed.has(f));
-    assert.deepEqual(stray, [], `表に無いファイルに ${kind} の複製がある`);
+    assertMirrors(TABLE2, kind);
   });
 }
 
@@ -267,3 +276,98 @@ test('AC19: auto-spec / auto-design の確定基準が、本文の全記述に�
     assert.match(section(read(skillMd(skill)), sec), /^- 本文の記述すべてが、.*「本文に書いてよいもの」の根拠（ユーザーの発言・実測・合意した判断）のどれかに紐づくこと$/m, `${skill}: 確定基準に根拠の要件が無い`);
   }
 });
+
+// ---- 具体例による確認（examples）・細部の点検（detail-checklist）・操作フロー確認モック（flow-mock） ----
+// 運用で報告された3つのずれ方（読み方が違った／細部を実装側が決めていた／画面や操作が想像と違った）への対策。
+
+test('AC20: 消費者表3の対象ファイルが allowlist と一致する', () => {
+  const files = tableRows(TABLE3.section, TABLE3.kinds).map((c) => c.file).sort();
+  assert.deepEqual(files, [
+    'agents/designer.md',
+    'agents/spec-writer.md',
+    'skills/auto-design/SKILL.md',
+    'skills/auto-spec/SKILL.md',
+    'skills/dev-plan/SKILL.md',
+  ]);
+});
+
+for (const kind of TABLE3.kinds) {
+  test(`AC21(${kind}): 表に載る全ファイルの該当節が正準と byte-identical で、表に無いファイルは複製を持たない`, () => {
+    assertMirrors(TABLE3, kind);
+  });
+}
+
+test('AC22: 正準の examples が「結果の例で確認・推測で作らない・確認済みだけ進める」を持つ', () => {
+  const lines = canonicalLines('examples');
+  assert.equal(lines.length, 5, 'examples は5行のはず');
+  assert.match(lines[0], /「入力 → 期待する結果」で書く。種別は正常・境界・例外を1つずつ。ユーザーの言葉を言い換えず、実データに近い具体値を使う$/);
+  assert.match(lines[1], /AskUserQuestion のダイアログの中（question 文か選択肢の preview）に、番号を付けてまとめて入れ/);
+  assert.match(lines[1], /選択肢は「すべて合っている」「違う例がある」にし、「違う例がある」が選ばれたら、その例の正しい結果を、候補を選択肢に並べて続けて聞く$/);
+  assert.match(lines[3], /例を作るために、値や結果を推測で決めてはならない$/);
+  assert.match(lines[4], /「合っている」と答えた例だけを「確認済み」にする。「未確認」の例が1件でも残っているうちは、次の手順へ進んではならない/);
+});
+
+test('AC23: 正準の detail-checklist が10カテゴリの allowlist と「実測できたものだけ埋める」を持つ', () => {
+  const lines = canonicalLines('detail-checklist');
+  assert.equal(lines.length, 12, 'detail-checklist は12行（規則2行＋10カテゴリ）のはず');
+  assert.match(lines[0], /実測できたものだけ埋め、実測できないものは問いにする/);
+  assert.match(lines[1], /^- 該当しないカテゴリは「該当なし」と理由を1行書く。黙って飛ばさない$/);
+  const names = lines.slice(2).map((l) => (l.match(/^- [①-⑩](.+?):/) || [])[1]);
+  // allowlist。カテゴリの追加・削除・改名を、意図した変更として review に出す。
+  assert.deepEqual(names, [
+    '表示文言', '失敗時の挙動', '件数と並び', '入力の決まり', '取り消せない操作',
+    '権限と見える範囲', 'データの残り方', '日時・数値・単位', '同時操作と再実行', '通知と波及',
+  ]);
+});
+
+test('AC24: 正準の flow-mock が「設計レビューの前・仮置きは確認・明言まで進まない」を持つ', () => {
+  const lines = canonicalLines('flow-mock');
+  assert.equal(lines.length, 5, 'flow-mock は5行のはず');
+  assert.match(lines[0], /設計レビューの前に、主要なユーザーストーリーを最初から最後まで操作できる静的 HTML モックを1つ作り、ユーザーに操作してもらう$/);
+  assert.match(lines[1], /空の状態・エラー時・件数が多い状態など、仕様に書いた状態を切り替える手段を付ける/);
+  assert.match(lines[2], /仮置きしたときは、その一覧をユーザーに示して1件ずつ確認する。仮置きをそのまま残してはならない$/);
+  assert.match(lines[3], /「意図と違う点は無い」とユーザーが明言するまで、設計レビューへ進まない$/);
+  assert.match(lines[4], /判断に迷ったら作る$/);
+});
+
+test('AC25: 手順の順序（dev-plan A3<A3.5<A5<A5.5<A6、auto-design D1<D1.7<D2）と、A1.5 が細部の点検を持つ', () => {
+  const plan = read(skillMd('dev-plan'));
+  const at = (h) => plan.indexOf(h);
+  const order = ['\n### A3. ', '\n### A3.5. 具体例による確認', '\n### A5. ', '\n### A5.5. 操作フロー確認モック', '\n### A6. '].map(at);
+  assert.ok(order.every((i) => i !== -1), `見出しが揃っていない: ${order}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'A3 < A3.5 < A5 < A5.5 < A6 の順になっていない');
+  const design = read(skillMd('auto-design'));
+  const d = ['\n### D1. ', '\n### D1.7. 操作フロー確認モック', '\n### D2. '].map((h) => design.indexOf(h));
+  assert.ok(d.every((i) => i !== -1) && d[0] < d[1] && d[1] < d[2], `auto-design の D1 < D1.7 < D2 が崩れている: ${d}`);
+  assert.match(section(plan, '### A1.5. ブラインドスポットパス'), /^2\. \*\*細部の点検\*\*/m);
+});
+
+test('AC26: 確認の門（A7・確定基準・雛形・agent の禁止事項）が具体例の「未確認」を通さない', () => {
+  const a7 = section(read(skillMd('dev-plan')), '### A7. Issue 作成');
+  assert.match(a7, /「具体例」の確認列に「未確認」が1件でも残っているなら投稿しない（A3\.5 に戻る）/);
+  assert.match(a7, /A5\.5 を実施しておらず、対象外の理由も無いなら、投稿しない（A5\.5 に戻る）/);
+  assert.match(section(read(skillMd('auto-spec')), '## 確定の判断基準'), /^- 「具体例」表の全件が「確認済み」であること（「未確認」が1件でも残っていれば確定しない）$/m);
+  const ad = section(read(skillMd('auto-design')), '## 確定の判断基準');
+  assert.match(ad, /^- §3 の「具体例」表の全件が「確認済み」であること（「未確認」が1件でも残っていれば確定しない）$/m);
+  assert.match(ad, /D1\.7 の操作フロー確認モックを実施済みで、ユーザーが「意図と違う点は無い」と明言していること/);
+  const tpl = section(read(path.join(SKILLS, 'dev-plan', 'reference', 'issue-template.md')), '## 具体例（入力 → 期待する結果）');
+  assert.match(tpl, /^\| ID \| 対象のルール \| 入力（具体値） \| 期待する結果 \| 種別 \| 確認 \|$/m);
+  assert.match(section(read(path.join(SKILLS, 'dev-plan', 'reference', 'issue-template.md')), '## 必ず含めるセクション'), /^- 具体例（確認列つき/m);
+  for (const f of ['templates/REQUIREMENTS-template.md', 'templates/DESIGN-template.md', 'agents/spec-writer.md', 'agents/designer.md']) {
+    assert.match(read(path.join(PLUGIN, f)), /^\| ID \| 対象のルール \| 入力（具体値） \| 期待する結果 \| 種別 \| 確認 \|$/m, `${f}: 具体例表のヘッダが無い`);
+  }
+  for (const f of ['agents/spec-writer.md', 'agents/designer.md']) {
+    assert.match(section(read(path.join(PLUGIN, f)), '## 禁止事項'), /^- 具体例の確認列を「確認済み」にすること（確認済みにできるのは、ユーザーが「合っている」と答えたときだけ）$/m, `${f}: 確認済みにする禁止が無い`);
+  }
+});
+
+test('AC27: ui-designer の Step 3-F が「1つだけ・状態切替・仮置きの可視化と返却」を持つ', () => {
+  const md = read(path.join(PLUGIN, 'agents', 'ui-designer.md'));
+  const f = section(md, '### Step 3-F: 操作フロー確認モード');
+  assert.match(f, /`\.agent\/mockups\/<slug>\/flow\.html`/);
+  assert.match(f, /静的 HTML モックを\*\*1つ\*\*生成する/);
+  assert.match(f, /画面上部の切り替えパネルで再現できること/);
+  assert.match(f, /仮置きした場合\*\*は、その箇所を画面上でも目立つ表示（「仕様に無い仮置き」）にし、一覧を返す。仮置きを黙って仕様どおりに見せてはならない/);
+  assert.match(section(md, '## 禁止事項'), /Step 3-P・Step 3-F の使い捨て HTML モックは実装コードではないため除く/);
+});
+
