@@ -356,18 +356,23 @@ PR は既に存在するので、ここから先はレビュー担当を待た�
 
 ### E4〜E6 を実行できる環境か確かめる
 
-E4〜E6 の保存先（ai-memory の MCP と `~/.agent/worklog/`）は手元の環境にしか無い。クラウドセッションではツールが見つからずに止まるか、VM に書いてセッション終了とともに消える。
+E4・E6 の保存先は ai-memory の MCP で、クラウドセッションでも ai-memory plugin が入っていれば使える。E5 の保存先（`~/.agent/worklog/`）は手元の環境にしか無く、クラウドでは VM に書いてもセッション終了とともに消える。
 
-<!-- ship-local-only -->
-`CLAUDE_CODE_REMOTE` が `true` のとき、または `memory_store` ツールが使えないときは、E4〜E6 を実行せずに E7 へ進み、終了メッセージに「E4〜E6（記憶保存・作業日報・記憶整理）は保存先が無い環境なので飛ばした」と書く。
-<!-- /ship-local-only -->
+<!-- ship-memory-gate -->
+`memory_store` ツールが使えないときは、E4〜E6 を実行せずに E7 へ進み、終了メッセージに「E4〜E6（記憶保存・作業日報・記憶整理）は保存先が無い環境なので飛ばした」と書く。plugin 経由のツールには名前に接頭辞が付くので、一覧に見当たらないときは ToolSearch で `memory_store` を探してから判断する。
+<!-- /ship-memory-gate -->
 
 ### E4. ai-memory 保存
 1. `memory_search` で重複チェック
-2. `memory_store` で作業サマリーを保存（category: context, importance: 3-4）
+2. `memory_store` で作業サマリーを保存（category: context, importance: 3-4）。クラウドセッションでは作業ディレクトリからプロジェクトを割り出せないので、`project` にリポジトリ名を渡す
 3. 技術知見があれば別途保存（category: pattern, importance: 5-7）
 
 ### E5. 作業日報更新
+
+<!-- ship-worklog-gate -->
+`CLAUDE_CODE_REMOTE` が `true` のときは、この E5 を実行せずに E6 へ進み、終了メッセージに「E5（作業日報）はクラウドに保存先が無いので飛ばした」と書く。
+<!-- /ship-worklog-gate -->
+
 1. `~/.agent/worklog/YYYY-MM.md` に1-2行で追記
 2. フォーマット: `| MM-DD | プロジェクト名 | ディレクトリ | 作業内容 |`
 
@@ -376,7 +381,7 @@ E4〜E6 の保存先（ai-memory の MCP と `~/.agent/worklog/`）は手元の�
 2. 必要に応じてmerge/archive
 
 ### E7. 終了メッセージ
-- 保存した記憶の数（E4〜E6 を飛ばしたときは、飛ばしたこととその理由）
+- 保存した記憶の数（E4〜E6 の一部または全部を飛ばしたときは、飛ばしたものとその理由）
 - 作成したPRのURL
 - 「セッションを終了します。お疲れさまでした。」
 - **マーカー掃除**。⚠ **E0 の変数は使えない**（E0 と E7 は別の Bash 呼び出し＝別シェルで、
