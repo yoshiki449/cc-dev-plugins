@@ -33,6 +33,7 @@ Issue仕様との差異分析を起点に、修正方針の策定→実装→検
 | status | 挙動 |
 |---|---|
 | `ok` | そのまま F1 に進む |
+| `cloud_clone` | クラウドセッションの単一 clone（非ベースブランチ）。worktree は作らない運用なのでそのまま F1 に進む |
 | `non_worktree_path` | worktree 内だが規約外パス。ユーザーに一言報告してそのまま F1 に進む（動作はする） |
 | `on_main_branch` / `flat_repo` | **中断**。ユーザーに以下を伝える: 「ベースブランチ（main/master/develop 等）直上 or worktree 未作成のため修正できません。`/dev-setup` を実行して worktree を作成してから戻ってきてください。既に worktree が別ディレクトリにあれば絶対パスを教えてください（そこに cd してから再度 `/dev-fix`）」 |
 | `not_a_repo` | 中断。ユーザーに repo 位置を確認 |

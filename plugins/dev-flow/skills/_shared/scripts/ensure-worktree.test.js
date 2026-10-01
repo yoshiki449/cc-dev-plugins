@@ -52,10 +52,12 @@ function makeRepoClone(t, branch) {
   return { projectFolder, repoDir };
 }
 
-function runScript(dir) {
+// CLAUDE_CODE_REMOTE を明示する。クラウド上でテストを回すと継承した true で
+// 既存の flat_repo 判定が cloud_clone に変わって落ちるため。
+function runScript(dir, remote = 'false') {
   return spawnSync('bash', [SCRIPT, '--json', dir], {
     encoding: 'utf8',
-    env: GIT_ENV,
+    env: { ...GIT_ENV, CLAUDE_CODE_REMOTE: remote },
     cwd: NEUTRAL_CWD,
   });
 }
@@ -146,4 +148,48 @@ test('origin/HEAD が develop を指す場合、develop 以外のブランチは
   const out = parseJsonOutput(res);
   assert.equal(out.status, 'flat_repo');
   assert.equal(out.branch, 'feature/foo');
+});
+
+// --- クラウドセッション（単一 clone）-------------------------------------------
+
+// クラウドの clone は <任意>/<リポジトリ名> に置かれ、repo/ + worktrees/ 構成ではない。
+function makeFlatClone(t, branch) {
+  const dir = path.join(makeTmpDir(t), 'my-app');
+  fs.mkdirSync(dir);
+  git(dir, ['init', '-q', '-b', 'main']);
+  git(dir, ['config', 'user.name', 'Test User']);
+  git(dir, ['config', 'user.email', 'test@example.com']);
+  git(dir, ['commit', '-q', '--allow-empty', '-m', 'init']);
+  if (branch !== 'main') git(dir, ['checkout', '-q', '-b', branch]);
+  return dir;
+}
+
+test('クラウド: 非ベースブランチのフラット clone は cloud_clone で exit 0（worktree を要求しない）', (t) => {
+  const dir = makeFlatClone(t, 'claude/tender-mccarthy-ccehem');
+  const res = runScript(dir, 'true');
+  assert.equal(res.status, 0);
+  const out = parseJsonOutput(res);
+  assert.equal(out.status, 'cloud_clone');
+  assert.equal(out.branch, 'claude/tender-mccarthy-ccehem');
+  assert.equal(out.worktree_dir, '', 'worktree は作らないので空');
+});
+
+test('クラウド: 同じ clone でもローカルなら flat_repo のまま', (t) => {
+  const dir = makeFlatClone(t, 'claude/tender-mccarthy-ccehem');
+  const res = runScript(dir, 'false');
+  assert.equal(res.status, 1);
+  assert.equal(parseJsonOutput(res).status, 'flat_repo');
+});
+
+test('クラウド: ベースブランチ上は on_main_branch のまま（main 誤コミットの防止は維持）', (t) => {
+  const dir = makeFlatClone(t, 'main');
+  const res = runScript(dir, 'true');
+  assert.equal(res.status, 1);
+  assert.equal(parseJsonOutput(res).status, 'on_main_branch');
+});
+
+test('クラウド: CLAUDE_CODE_REMOTE が true 以外の値なら cloud_clone にしない', (t) => {
+  const dir = makeFlatClone(t, 'feature/foo');
+  const res = runScript(dir, '1');
+  assert.equal(parseJsonOutput(res).status, 'flat_repo');
 });

@@ -22,6 +22,13 @@
 #   2: git repo ではない
 #   3: worktree 相当だが規約外のパス（動くが非推奨）
 #
+# クラウドセッション（CLAUDE_CODE_REMOTE=true）:
+#   コンテナは使い捨ての単一 clone で、セッションが指定したブランチがチェックアウト済み。
+#   worktree を切っても得るものが無く、フラット→repo/ 移行は clone のディレクトリ自体を
+#   組み替えてセッションの cwd を壊す。そのためベースブランチ以外なら cloud_clone（exit 0）
+#   を返し、worktree を要求しない。ベースブランチ上は main 誤コミットを防ぐ目的が同じなので
+#   従来どおり on_main_branch で止める。
+#
 # ベースブランチの判定:
 #   まず `origin/HEAD` の symbolic-ref（git-flow で develop が既定ブランチのリポ等、
 #   clone 時に設定される）を見る。取れなければ main/master/develop を固定候補として見る。
@@ -29,7 +36,7 @@
 #   ブランチを切らずに develop 上でそのまま作業→push する経路が生まれる。
 #
 # 出力する主な情報（人間可読／JSON 共通）:
-#   status         : ok | flat_repo | on_main_branch | non_worktree_path | not_a_repo
+#   status         : ok | cloud_clone | flat_repo | on_main_branch | non_worktree_path | not_a_repo
 #   branch         : 現在のブランチ名
 #   repo_root      : git rev-parse --show-toplevel の結果
 #   project_folder : 規約上の project folder（repo/ の親 or worktrees/<x>/ の 2つ上）
@@ -141,6 +148,11 @@ if is_base_branch "$BRANCH"; then
     SUGGEST="フラット構成の $BRANCH ブランチ（ベースブランチ）上。dev-setup を実行して (1) 既存 repo を $PROJECT_FOLDER/repo/ に移行 (2) worktree を $PROJECT_FOLDER/worktrees/<branch>/ に作成"
   fi
   emit "on_main_branch" "$BRANCH" "$REPO_ROOT" "$PROJECT_FOLDER" "" "$SUGGEST" 1
+fi
+
+if [[ "${CLAUDE_CODE_REMOTE:-false}" == "true" ]]; then
+  emit "cloud_clone" "$BRANCH" "$REPO_ROOT" "$REPO_ROOT" "" \
+    "クラウドセッションの単一 clone（ブランチ: $BRANCH）。worktree は作らず、このブランチでそのまま作業してよい" 0
 fi
 
 # ベースブランチ以外だが worktree ではないケース

@@ -49,6 +49,21 @@ B0 で新規プロジェクトと判定した場合に実施。引継書の `## 
 
 > **原則**: 実装・修正は必ず **worktree の中** で行う。main clone（`repo/`）では作業しない。フラット構成のリポは自動で `repo/` に移行してから worktree を切り出す。過去に main 誤コミット事故が発生しているため（memory `bash-cwd-drift-in-worktree`）。
 
+#### クラウドセッションでは worktree を作らない
+
+<!-- setup-cloud-no-worktree -->
+`CLAUDE_CODE_REMOTE` が `true` のときは worktree を作らず、B1-1〜B1-3 と B6-0 を実行しない。
+<!-- /setup-cloud-no-worktree -->
+
+クラウドのコンテナは使い捨ての単一 clone で、セッションが指定したブランチ（`claude/…`）がチェックアウト済み。worktree を切っても得るものが無く、フラット→`repo/` 移行は clone のディレクトリ自体を組み替えてセッションの cwd を壊す。クラウドでは次のとおりにする（ローカルは下の B1-0 以降のまま。B1-0 の表のうち `on_main_branch` の行はローカル用で、クラウドでは下の 1 に従う）:
+
+1. `bash skills/_shared/scripts/ensure-worktree.sh` を実行する
+   - `cloud_clone` → 現在のブランチでそのまま作業する。ブランチは切らない
+   - `on_main_branch`（ベースブランチ上）→ セッションが指定したブランチがあればそれへ、無ければ Issue 番号から `feature/issue-<番号>-<slug>` を `git switch -c` で切る。main 誤コミットを防ぐ目的はクラウドでも同じなので、ベースブランチ上のまま進めない
+2. B1-3.5 / B1-3.6（`size-tier.conf` の適用・生成）は **今の clone の中で**実行する。`<project-folder>/worktrees/<branch-basename>` は `git rev-parse --show-toplevel` に読み替える
+3. B3 の 1（`COMPOSE_PROJECT_NAME` の固定）は worktree 運用の対策なので飛ばす
+4. B6 の引継書には、worktree を作っていないこと、作業ディレクトリ（`git rev-parse --show-toplevel`）、ブランチ名を書く。「worktree 絶対パス」「main clone 絶対パス」の欄は同じ作業ディレクトリを書く
+
 #### B1-0. 現在の構造を確認
 ```bash
 bash skills/_shared/scripts/ensure-worktree.sh
@@ -61,6 +76,7 @@ bash skills/_shared/scripts/ensure-worktree.sh
 | `on_main_branch` + repo_basename が `repo` | 規約準拠だが main clone 上（ベースブランチ=main/master/develop 等。判定は `origin/HEAD` を優先し、無ければ main/master/develop を見る） | B1-2 の worktree 作成に進む |
 | `on_main_branch` + フラット | フラット repo のベースブランチ上 | B1-1 の自動移行を実施 |
 | `non_worktree_path` | worktree だがパスが規約外 | 動作するので B2 に進む（次回セットアップ時に規約準拠パスに揃える）|
+| `cloud_clone` | クラウドセッションの単一 clone（`CLAUDE_CODE_REMOTE=true`・非ベースブランチ） | worktree は作らず B2 に進む（上の囲みを参照） |
 | `flat_repo` | フラット repo の非ベースブランチ | ユーザーに確認: 「(a) 現在のブランチをそのまま worktree 化 (b) ベースブランチに戻してから B1-1 移行 → 新ブランチ作成」|
 
 **移行不能ケース**（B1-1 の事前チェックで判明する。該当したら**移行を実行せず**ユーザーに確認する）:

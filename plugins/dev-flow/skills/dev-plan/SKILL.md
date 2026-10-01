@@ -1,6 +1,6 @@
 ---
 name: dev-plan
-description: 企画フェーズ。**新機能開発**だけでなく **既存機能の改修企画・保守タスク（EOL対応・ライブラリ更新・リファクタリング・バージョンアップ）の調査と計画立案** にも使う。要件調査→仕様設計→画面設計→設計レビュー→GitHub Issue作成→フェーズ分割を行う。新規プロジェクトではDockerアーキテクチャ設計も含む。ユーザーが「○○機能の現状を教えて」「○○を改修したい」「EOLが切れていないか確認したい」「バージョンアップしたい」「○○を企画したい」「Issue切って」「○○の仕様を整理して」と言ったら必ず起動する。
+description: 企画フェーズ。**新機能開発**だけでなく **既存機能の改修企画・保守タスク（EOL対応・ライブラリ更新・リファクタリング・バージョンアップ）の調査と計画立案** にも使う。要件調査→仕様設計→画面設計→設計レビュー→GitHub Issue作成→フェーズ分割を行う。新規プロジェクトではDockerアーキテクチャ設計も含む。ユーザーが「○○機能の現状を教えて」「○○を改修したい」「EOLが切れていないか確認したい」「バージョンアップしたい」「○○を企画したい」「Issue切って」「Issueを作成して／立てて／起票して」「○○の仕様を整理して」と言ったら必ず起動する（Issue を作る依頼は開発案件なら dev-plan 経由で作る）。
 user-invocable: true
 allowed-tools: Bash, Read, Write, Grep, Glob, Agent, WebSearch, WebFetch, gh
 ---
@@ -254,7 +254,7 @@ A5 の画面仕様ができたら、A6 の設計レビューの前に、操作�
 
 ### A7. Issue 作成
 
-[reference/issue-template.md](reference/issue-template.md) のテンプレートに従って Issue 本文を組み立て、`gh issue create --body-file -` で投稿する。
+[reference/issue-template.md](reference/issue-template.md) のテンプレートに従って Issue 本文を組み立て、`gh issue create --body-file -` で投稿する。`gh` が使えない環境（クラウドセッションなど）では GitHub MCP の `mcp__github__issue_write`（`method: create`）で、同じ本文を投稿する。
 
 - 必ず含めるセクション・省略可能なセクション・記述ルールはすべて reference 側に定義
 - ヒアリング結果から「省略可能」と判断した項目は理由を引継書に残す
