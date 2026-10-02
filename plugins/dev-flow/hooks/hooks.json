@@ -1,5 +1,5 @@
 {
-  "description": "PreToolUse(Edit|Write) で保護ファイルと .agent/loop-denylist.txt（dev-flow denylist）への書き込みをブロックする（denylist ファイルが無いプロジェクトでは固定保護パターンのみ有効）。PreToolUse(Bash) で /dev-ship 非経由の gh pr create をブロックする（.agent/ があるリポジトリのみ、マーカー .git/dev-ship-active（--git-common-dir 配下） で解除）。PreToolUse(Edit|Write|Bash|mcp__*__issue_write) の suggest-dev-phase.sh が「コード書込・gh issue create・GitHub MCP の issue_write(create)・要件/設計md 書込」の瞬間に該当フェーズスキルの起動リマインダーを注入する（注入型・ブロックしない・マーカー .agent/.dev-flow-active で沈黙）。UserPromptSubmit で発話が dev-flow のトリガーワードに一致したら該当スキルの起動リマインダーをコンテキストに注入する。 SessionStart でクラウドセッションのとき（CLAUDE_CODE_REMOTE=true）だけ cloud-stack prepare を実行し、.claude/cloud-stack.json を持つリポジトリの軽い準備を始める（リポジトリ側の hook は複数リポジトリのセッションで効かないため plugin が持つ）。 クラウドでは .agent/ が無い新規 clone でも Issue 作成（issue_write / gh issue create）の瞬間だけ dev-plan の案内を出す（PoC の .poc/ があれば沈黙）。",
+  "description": "PreToolUse(Edit|Write) で保護ファイルと .agent/loop-denylist.txt（dev-flow denylist）への書き込みをブロックする（denylist ファイルが無いプロジェクトでは固定保護パターンのみ有効）。PreToolUse(Bash) で /dev-ship 非経由の gh pr create をブロックする（.agent/ があるリポジトリのみ、マーカー .git/dev-ship-active（--git-common-dir 配下） で解除）。PreToolUse(Edit|Write|Bash|mcp__*__issue_write) の suggest-dev-phase.sh が「コード書込・gh issue create・GitHub MCP の issue_write(create)・要件/設計md 書込」の瞬間に該当フェーズスキルの起動リマインダーを注入する（注入型・ブロックしない・マーカー .agent/.dev-flow-active で沈黙）。UserPromptSubmit で発話が dev-flow のトリガーワードに一致したら該当スキルの起動リマインダーをコンテキストに注入する。 SessionStart でクラウドセッションのとき（CLAUDE_CODE_REMOTE=true）だけ cloud-stack prepare を実行し、.claude/cloud-stack.json を持つリポジトリの軽い準備を始める（リポジトリ側の hook は複数リポジトリのセッションで効かないため plugin が持つ）。 クラウドで WebSearch / WebFetch を呼ぶ瞬間には、suggest-cloud-research.sh が cloud-research スキル（ドメイン制限のない research 環境へ調査を委譲）の案内を同一セッションで1回だけ出す（research 環境の子セッションでは沈黙）。 クラウドでは .agent/ が無い新規 clone でも Issue 作成（issue_write / gh issue create）の瞬間だけ dev-plan の案内を出す（PoC の .poc/ があれば沈黙）。",
   "hooks": {
     "PreToolUse": [
       {
@@ -28,6 +28,16 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/suggest-dev-phase.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/suggest-cloud-research.sh\"",
             "timeout": 10
           }
         ]
