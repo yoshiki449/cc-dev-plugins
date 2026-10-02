@@ -7,6 +7,7 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `reference/handover-template.md` | 引継書テンプレート（全フェーズ共通の骨格＋フェーズ固有セクション） |
 | `scripts/latest-handover.sh` | `.agent/handover-*.md` の最新ファイルパスを返す（判定は**ファイル名の日付**。日付を持たない引継書は除外して stderr に警告） |
 | `scripts/new-handover-path.sh [issue]` | 新規引継書パスを生成（衝突時はエラー） |
+| `scripts/check-handover-secrets.sh <引継書>` | 引継書に資格情報らしい行（パスワード・トークン等の代入、Bearer、URL 埋め込み、既知の接頭辞、秘密鍵）が無いか走査する。検出した値は出力せず「ファイル:行番号: 種類」だけを返す（exit 1=検出あり）。引継書をリポジトリで共有するとき、コミットの前に使う |
 | `scripts/extract-issue-number.sh [handover]` | 引継書／ブランチ名から Issue 番号を抽出 |
 | `reference/qc-overlay.md` | 組織固有の QC 観点を外から差し込む契約（入力／出力／責務の境界）。判定器は `scripts/qc-overlay.sh` |
 | `scripts/qc-overlay.sh --phase <phase>` | overlay の適用状況を JSON 1 行で返す。判定材料は `overlay_present` ではなく `overlay_applied` |

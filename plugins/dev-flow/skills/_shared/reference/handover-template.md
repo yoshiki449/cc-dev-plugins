@@ -32,7 +32,7 @@
 
 ## 環境情報（必要なら）
 - 起動URL: http://localhost:<port>
-- ログイン情報: <メール/パスワード>
+- ログインユーザー: <メール等の ID。**パスワード・トークンは書かない**。値の取得元（`.env.local`・シードスクリプトなど）を書く>
 - 主要サービス: <docker compose ps の概要>
 
 ## 完了事項
@@ -69,6 +69,16 @@
 | qa | 総合判定、指摘件数、qa-report のパス、未対応指摘 |
 | fix | 修正項目と対応コミット、別Issue化した項目、F1 で確定させた項目（テスト修復なら「テストと実装のどちらが正しいと決めたか」） |
 | ship | PR URL、ai-memory 保存件数 |
+
+## 引継書の共有（リポジトリが引継書を追跡しているとき）
+
+引継書をリポジトリに置いて共有するプロジェクトでは、クラウドセッションが新しい clone だけで前のフェーズの文脈を読める（`.agent/*` で既定除外し `!.agent/handover-*.md` で戻す allowlist。[doc-standard](../../doc-standard/SKILL.md) 参照）。**コミットされた資格情報は history に残る**ので、書き終えたら次の順で行う。
+
+<!-- handover-share:steps -->
+1. `bash <skill-dir>/../_shared/scripts/check-handover-secrets.sh <引継書のパス>` を実行する。exit 1 なら、出力された行番号の資格情報を取り除き（ユーザー名と取得元だけを書く）、通るまで再実行する。通るまでコミットしない
+2. `git check-ignore -q <引継書のパス>` が 0 を返す（無視されている）なら、ローカル専用のままにして終える
+3. 2 が 0 以外（追跡対象）なら、その 1 ファイルだけをコミットする: `git add <引継書のパス>` → `git diff --cached --name-only` が引継書だけであることを確認する（他のステージ済み変更を巻き込まない）→ `git commit -m "docs: 引継書（<フェーズ>）を追加 #<Issue番号>"`。push は通常のブランチ運用に従う
+<!-- /handover-share:steps -->
 
 ## 注意事項
 

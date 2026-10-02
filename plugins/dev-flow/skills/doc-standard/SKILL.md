@@ -27,6 +27,13 @@ description: ドキュメント保管規約（docs/ はレビュー文書で git
 !.agent/architecture.md
 ```
 
+**引継書を届ける**: 新しい clone で始まるクラウドセッションにも前のフェーズの文脈を渡したいときは、`!.agent/handover-*.md` を足す。上の denylist（`handover-*.md` を除外する側）と違い、追跡する名前を `new-handover-path.sh` が作る `handover-YYYYMMDD-HHMM[-issueN].md` に限る allowlist なので、除外漏れは起きない。追跡される引継書にはパスワード・トークンを書かない（`_shared/scripts/check-handover-secrets.sh` で書いた直後に走査する。手順は `_shared/reference/handover-template.md` の「引継書の共有」）。
+
+```gitignore
+.agent/*
+!.agent/handover-*.md
+```
+
 スクリプトが自動で行うこと（すべて idempotent）：
 
 1. ルート直下の設計系 md（`REQUIREMENTS*.md` / `DESIGN*.md` / `SPEC*.md` / `OPERATIONS.md` / `RUNBOOK.md`）を `docs/` へ移動（tracked なら `git mv`。隣接する `<名前>.md.comments.json` も一緒に移動）
