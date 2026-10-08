@@ -4,6 +4,7 @@
 # 現在の git リポジトリで、未 push 範囲の diff にシークレット候補が混入していないか走査する。
 # 検出ゼロ → exit 0（push 続行）
 # 検出あり → 該当箇所を stderr に出力 → exit 1（push ブロック）
+# 「40文字以上の英数字」だけは止めない（情報表示のみ。理由はパターン3の箇所）。
 #
 # 呼び出し元: hooks/pre-bash-push-check.sh
 # 独立実行も可能（デバッグ用途）。
@@ -30,10 +31,11 @@ TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
 VIO_PREFIX=$(mktemp /tmp/secret-scan-prefix-vio-XXXXXX) || exit 0
 VIO_VARS=$(mktemp /tmp/secret-scan-vars-vio-XXXXXX) || exit 0
 VIO_LONG=$(mktemp /tmp/secret-scan-long-vio-XXXXXX) || exit 0
+VIO_CRED=$(mktemp /tmp/secret-scan-cred-vio-XXXXXX) || exit 0
 # クリーンアップはすべて実パスの変数参照で行う（glob 頼みにしない）。
 # glob（/tmp/secret-scan-nontest-*）で消すと、同時に走っている別プロセスの
 # 未使用でも生存中のファイルまで巻き込んで消しうる（コードレビューで指摘）。
-trap "rm -f $TMP $FILES_LIST $TMP_NONTEST $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
+trap "rm -f $TMP $FILES_LIST $TMP_NONTEST $VIO_PREFIX $VIO_VARS $VIO_LONG $VIO_CRED 2>/dev/null" EXIT
 
 
 # NUL区切り→1行1レコードへの変換に使う awk 断片。
@@ -115,8 +117,17 @@ awk '
 # ---- 検出パターン ----
 # 1. 既知 SaaS / Cloud のトークン prefix（追加行 "+" に限定。削除行は問題ない）
 # テスト/フィクスチャファイルでも見る。本物の値が紛れ込む害の方が大きい。
+# 形式が確定しているものだけを足す（誤検出が出にくい）。
+#   - sk-ant- / sk-proj- 等: ハイフンを含むので素の `sk-[英数字]{20,}` では外れる。
+#     実測では「40文字以上の英数字」にたまたま当たるだけで、ランダムな30個のうち
+#     23個しか検出できていなかった（パターン3は止めない扱いにしたので形で直接見る）。
+#     `task-` のような語の途中の `sk-` に反応しないよう、直前が英数字でないことを要求する。
+#   - sk_live_ / rk_live_: Stripe 本番キー。test_ は公開ドキュメントの例が多いので対象外
+#   - hooks.slack.com/services/T../B../<token>: Slack webhook。URL なのでパターン3も通らない
+#   - PEM 秘密鍵: 種別語なしの `BEGIN PRIVATE KEY`（PKCS#8）と `PGP PRIVATE KEY BLOCK` も含める
+#   - npm_ / SG.（SendGrid）
 grep -nE \
-  '^\+.*(sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|ASIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|xox[abps]-[A-Za-z0-9-]{10,}|AIza[A-Za-z0-9_-]{35}|glpat-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z]+ PRIVATE KEY-----)' \
+  '^\+.*(sk-[A-Za-z0-9]{20,}|(^|[^A-Za-z0-9])sk-(ant|proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|(sk|rk)_live_[A-Za-z0-9]{16,}|hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]{16,}|npm_[A-Za-z0-9]{36}|SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}|AKIA[A-Z0-9]{16}|ASIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|xox[abps]-[A-Za-z0-9-]{10,}|AIza[A-Za-z0-9_-]{35}|glpat-[A-Za-z0-9_-]{20,}|-----BEGIN ([A-Z]+ )*PRIVATE KEY( BLOCK)?-----)' \
   "$TMP" > "$VIO_PREFIX" 2>/dev/null || true
 
 # 2. 変数代入で値が長い & 既知のホワイトリスト用語を含まない
@@ -133,10 +144,22 @@ grep -nE \
 # ような無関係な識別子まで「hash と TOKEN が同じ行にある」というだけで
 # 除外してしまう。ギャップは "_?"（アンダースコア1個まで）に絞る）。
 GAP='_?'
-KW='(PASSWORD|PASSWD|SECRET|API[_-]?KEY|API[_-]?TOKEN|TOKEN|BEARER)'
-HASH_ADJ="(hash${GAP}${KW}|${KW}${GAP}hash)"'[[:space:]]*[=:]'
+# SECRET_KEY / SECRET_ACCESS_KEY（Django・AWS）と ACCESS_KEY は `SECRET` の直後に
+# `_KEY` が続いて `=` に届かず、素の SECRET では取りこぼしていた。
+KW='(PASSWORD|PASSWD|SECRET([_-]?(ACCESS[_-]?)?KEY)?|ACCESS[_-]?KEY|API[_-]?KEY|API[_-]?TOKEN|TOKEN|BEARER)'
+# キーの直後の閉じクォートを許す。許さないと JSON/YAML の `"api_key": "..."` は
+# キーワードと `:` の間に `"` が挟まり、設定ファイルの形が一切検出できなかった。
+SEP='["'"'"']?[[:space:]]*[=:][[:space:]]*'
+HASH_ADJ="(hash${GAP}${KW}|${KW}${GAP}hash)"'["'"'"']?[[:space:]]*[=:]'
 VALUE_CHARS='[A-Za-z0-9!#$%&*+/=?_~@.-]{8,}'
-DETECT2='^\+.*'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?'"$VALUE_CHARS"
+# 大文字のキーワード（PASSWORD = ...）は従来どおり、値の形を問わず拾う。
+# 大文字小文字を区別しない側（小文字の password / apiKey / client_secret）は、
+# 識別子同士の代入（`token = get_token(x)`）で誤検出しないよう、「引用符つきの値で、
+# 数字を1つ以上含む」ものだけに絞る。識別子（`passwordInput`）やラベル
+# （`"refresh_token"`）は数字を含まないので落ちる。数字を含まない英字だけの
+# パスワードは見逃す（誤検出との引き換え）。
+DETECT2='^\+.*'"$KW$SEP"'["'"'"']?'"$VALUE_CHARS"
+QUOTED_ASSIGN='[=:][[:space:]]*["'"'"']'
 
 # 除外語は「代入された値そのもの」に対してだけ判定する（行全体に対してでは
 # ない）。敵対的レビューで実測: 行全体を対象にすると、値とは無関係な場所
@@ -154,8 +177,13 @@ DETECT2='^\+.*'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?'"$VALUE_CHARS"
 # "xxxx" は同じ理由で厳密な単語一致ではなく4文字以上の繰り返しとして
 # 判定する（"XXXXXXXX" のような値は先頭の4文字の直後も英字が続くため、
 # 単語境界条件だと一致しなくなってしまう）。
-PLACEHOLDER_WORDS='(fake|dummy|sample|placeholder|redacted|change-?me|your-|replace-with|example\.)'
-VALUE_EXCLUDE='os\.environ|_require_env|process\.env|<[^>]+>|(^|[^A-Za-z])'"$PLACEHOLDER_WORDS"'([^A-Za-z]|$)|\$\{|\$[A-Za-z_]+|\*{2,}|x{4,}|0000+|\$2[aby]\$|argon2|pbkdf2|scrypt'
+PLACEHOLDER_WORDS='(fake|dummy|sample|placeholder|redacted|change-?me|replace-with|example\.)'
+# `your-` は末尾がハイフンなので、他の語と同じ「後ろが英字でない」条件を付けると
+# `your-api-key-xxx` のように英字が続く典型的なプレースホルダを除外できない
+# （実測: 値が your-api-key-1234 の大文字キー代入が検出されていた）。前だけ境界を見る
+# （`notyour-...` のように英字に続く位置では一致しない）。
+# `...` は省略記法（`sk-abc...xyz0`）で、実値には現れない。ドキュメント中の例が対象。
+VALUE_EXCLUDE='os\.environ|_require_env|process\.env|<[^>]+>|\.\.\.|(^|[^A-Za-z])'"$PLACEHOLDER_WORDS"'([^A-Za-z]|$)|(^|[^A-Za-z])your-|\$\{|\$[A-Za-z_]+|\*{2,}|x{4,}|0000+|\$2[aby]\$|argon2|pbkdf2|scrypt'
 # HTML/JSON の周辺マークアップ判定は値の中身ではなく行全体の構造を見る
 # ものなので、こちらは従来どおり行全体に対して判定する。
 LINE_EXCLUDE='description.*password|name="password"'
@@ -168,16 +196,44 @@ while IFS= read -r cand; do
   if printf '%s\n' "$content" | grep -qiE "$HASH_ADJ"; then
     continue
   fi
-  value=$(printf '%s\n' "$content" \
-    | grep -oE "$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?'"$VALUE_CHARS" \
-    | sed -E 's/^'"$KW"'[[:space:]]*[=:][[:space:]]*["'"'"']?//')
+  if printf '%s\n' "$content" | grep -qE "$DETECT2"; then
+    # 大文字のキーワード: 従来どおり値の形を問わない
+    matches=$(printf '%s\n' "$content" | grep -oE "$KW$SEP"'["'"'"']?'"$VALUE_CHARS")
+  else
+    # 大文字小文字違いのキーワード: 引用符つきで数字を含む値だけ
+    matches=$(printf '%s\n' "$content" \
+      | grep -oiE "$KW$SEP"'["'"'"']?'"$VALUE_CHARS" \
+      | grep -E "$QUOTED_ASSIGN" | grep -E '[0-9]')
+    [ -n "$matches" ] || continue
+  fi
+  # キーワード側に = や : は含まれないので、最初の区切りまでを落とせば値が残る
+  value=$(printf '%s\n' "$matches" | sed -E 's/^[^=:]*[=:][[:space:]]*["'"'"']?//')
   if printf '%s\n' "$value" | grep -qiE "$VALUE_EXCLUDE"; then
     continue
   fi
   printf '%s\n' "$cand"
-done < <(grep -nE "$DETECT2" "$TMP_NONTEST" 2>/dev/null) > "$VIO_VARS"
+done < <(grep -niE "$DETECT2" "$TMP_NONTEST" 2>/dev/null) > "$VIO_VARS"
+
+# 2b. 認証情報つき URL / Bearer ヘッダ / JWT（変数名に頼らない形）
+# テスト/フィクスチャは対象外（ダミーの接続文字列が普通に書かれる）。
+# URL のパスワード部は `{}` `$` `%` `<>` を含まない文字だけ（テンプレート展開される
+# ものは値ではない）。長さ6以上で、下の除外語（password / changeme 等）でないもの。
+CRED_RE='[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]:@"'"'"'<>{}$%]+:[^/[:space:]@"'"'"'<>{}$%]{6,}@[A-Za-z0-9]|[Bb]earer[[:space:]]+[A-Za-z0-9._~+/-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+CRED_EXCLUDE="$VALUE_EXCLUDE"'|:(pass|password|passwd|pwd|secret|changeme|admin|root)@|your_|_here'
+while IFS= read -r cand; do
+  content="${cand#*:}"
+  kept=$(printf '%s\n' "$content" | grep -oE "$CRED_RE" | grep -viE "$CRED_EXCLUDE")
+  [ -n "$kept" ] && printf '%s\n' "$cand"
+done < <(grep -nE '^\+.*('"$CRED_RE"')' "$TMP_NONTEST" 2>/dev/null) > "$VIO_CRED"
 
 # 3. 長い英数字（40文字以上）の塊。URL や SHA 行、ハッシュ値は除外
+# ⚠ これは止めない（情報表示のみ）。実測（2つのリポジトリの全履歴を1コミットずつ
+# 走査）では、止まった6件がすべて誤検出で本物の秘密は0件だった。このパターンの
+# 誤検出は Google ドライブのファイル ID（44文字の英数字）など。既知の形式は
+# パターン1・2・2b が形で直接見るので、ここは「未知の形式の手がかり」にしかならず、
+# 止めると ALLOW_SECRETS で飛ばす運用に倒れる。
+# PreToolUse は exit 0 の stderr をどこにも表示しないので、hook 経由ではこの表示は
+# 見えない。単体実行（デバッグ）のときだけ読める。
 # "hash" は前後が英字でない位置（行頭/行末 or 非英字）でのみ一致させる。
 # `\b`（単語境界）は使えない: アンダースコアは word 文字として扱われるため
 # "PASSWORD_HASH" の "_HASH" 側で境界が成立せず、除外したいケースを取りこぼす。
@@ -198,9 +254,14 @@ grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP_NONTEST" 2>/dev/null \
 COUNT_PREFIX=$(wc -l < "$VIO_PREFIX")
 COUNT_VARS=$(wc -l < "$VIO_VARS")
 COUNT_LONG=$(wc -l < "$VIO_LONG")
-TOTAL=$((COUNT_PREFIX + COUNT_VARS + COUNT_LONG))
+COUNT_CRED=$(wc -l < "$VIO_CRED")
+TOTAL=$((COUNT_PREFIX + COUNT_VARS + COUNT_CRED))
 
 if [ "$TOTAL" -eq 0 ]; then
+  if [ "$COUNT_LONG" -gt 0 ]; then
+    echo "[git-secret-guard] ℹ 40文字以上の長い英数字が $COUNT_LONG 件（止めません。要目視）" >&2
+    head -5 "$VIO_LONG" | sed 's/^/    /' >&2
+  fi
   echo "[git-secret-guard] ✓ シークレット混入なし（range=$range）" >&2
   exit 0
 fi
@@ -220,9 +281,14 @@ fi
     head -10 "$VIO_VARS" | sed 's/^/    /'
     echo ""
   fi
+  if [ "$COUNT_CRED" -gt 0 ]; then
+    echo "【 認証情報つき URL / Bearer ヘッダ / JWT 】$COUNT_CRED 件"
+    head -10 "$VIO_CRED" | sed 's/^/    /'
+    echo ""
+  fi
   if [ "$COUNT_LONG" -gt 0 ]; then
-    echo "【 40文字以上の長い英数字 】$COUNT_LONG 件（誤検出多め、要目視）"
-    head -5 "$VIO_LONG" | sed 's/^/    /'
+    echo "（参考）40文字以上の長い英数字 $COUNT_LONG 件。これは止める理由にしていません"
+    head -3 "$VIO_LONG" | sed 's/^/    /'
     echo ""
   fi
   echo "git push を中止しました。"

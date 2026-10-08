@@ -39,7 +39,7 @@ exit 0                          scripts/secret-scan.sh を起動
 
 | スクリプト | 見るもの | バイパス |
 |---|---|---|
-| `secret-scan.sh` | 秘密の値（トークン prefix・長い英数字・変数代入） | `ALLOW_SECRETS=1` |
+| `secret-scan.sh` | 秘密の値（既知のトークン形式・変数代入・認証情報つき URL / Bearer / JWT） | `ALLOW_SECRETS=1` |
 | `publish-scan.sh` | 公開してはいけない固有名、実在しそうなメールアドレス、鍵の形 | `ALLOW_PUBLISH=1` |
 
 **`ALLOW_SECRETS=1` は publish-scan を飛ばさない。** 守っている失敗モードが別で、
@@ -95,9 +95,32 @@ git 全体の history は対象外（速度のため）。
 
 | カテゴリ | 例 |
 |---|---|
-| **SaaS / Cloud トークン** | `sk-...`, `AKIA...`, `ghp_...`, `xox[abp]-...`, `AIza...`, `glpat-...`, PEM形式秘密鍵 |
-| **変数代入** | `PASSWORD = "abc123XYZ"`, `API_TOKEN: "..."`, `SECRET = "..."` |
-| **長い英数字** | 40文字以上の連続英数字（URL/SHA 等は除外） |
+| **SaaS / Cloud トークン**（テストファイルでも見る） | `sk-...`, `sk-ant-...`, `sk-proj-...`, `sk_live_...`, `AKIA...`, `ghp_...`, `xox[abp]-...`, `AIza...`, `glpat-...`, `npm_...`, `SG....`, Slack webhook URL、PEM 秘密鍵（`BEGIN PRIVATE KEY` / `BEGIN RSA PRIVATE KEY` / `BEGIN PGP PRIVATE KEY BLOCK` 等） |
+| **変数代入** | `PASSWORD = "..."`, `API_TOKEN: "..."`, `SECRET_KEY = '...'`, `AWS_SECRET_ACCESS_KEY=...`, JSON/YAML の `"api_key": "..."`。小文字・camelCase（`password`, `apiKey`, `client_secret`）も対象だが絞りあり（下記） |
+| **認証情報つき URL / Bearer / JWT**（テストファイルは対象外） | `postgres://user:<6文字以上>@host`, `Authorization: Bearer <20文字以上>`, `eyJ....eyJ....<署名>` |
+| **長い英数字**（**止めない**・情報表示のみ） | 40文字以上の連続英数字。hook 経由では表示されない（PreToolUse は exit 0 の stderr を出さない）。単体実行したときだけ読める |
+
+### 小文字・camelCase のキーワードの絞り
+
+`PASSWORD` のように大文字のキーワードは、値の形を問わず拾う（従来どおり）。
+`password` / `apiKey` / `client_secret` のように大文字でないものは、誤検出を避けるため
+**引用符つきの値で、数字を1つ以上含むもの**だけを拾う。
+
+- 拾わない例: `token = get_token(request)`（識別子の代入）、`password: string;`（型注釈）、
+  `"type": "refresh_token"`（ラベル）
+- **限界**: 数字を含まない英字だけの値（`password = "abcdefghijklmnopqrst"`）は見逃す。
+  誤検出との引き換えで、テストで固定している（`secret-scan.test.js`）
+- 値に `...`（省略記法）、`your-`、`changeme`、`<...>`、`${...}` を含むものは、
+  大文字・小文字を問わずプレースホルダとして除外する
+
+### 長い英数字を止めなくなった理由
+
+実測（2つのリポジトリの全履歴を1コミットずつ走査）で、止まった6件はすべて誤検出で、
+本物の秘密は0件だった。このパターンの誤検出は Google ドライブのファイル ID
+（44文字の英数字）など。既知の形式は上の区分が形で直接見るので、長い英数字は
+「未知の形式の手がかり」にしかならず、止めると `ALLOW_SECRETS=1` で飛ばす運用に倒れる。
+同じ実測で、本物らしい偽の値20ケース中10件を見逃していた（小文字の変数名、Stripe、
+Slack webhook、PKCS#8 秘密鍵、DB 接続文字列、Bearer など）。形式を足した後は0件。
 
 ### 誤検出回避（除外条件）
 
@@ -234,7 +257,8 @@ export ALLOW_SECRETS=1 && git push origin main
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| 大量の「40文字以上の長い英数字」検出 | base64 や HTML/CSS 中の長い文字列を誤検出 | パターン側を改善するか、ALLOW_SECRETS=1 でバイパス |
+| 長い英数字（base64・ファイル ID 等）で止まる | 止まらない設計。止まったなら別の区分（検出メッセージの見出し）が原因 | 見出しの区分と該当行を見る |
+| 小文字の `password = "..."` で止まる | 引用符つき・数字を含む値を拾う設計 | 実値なら外へ出す。ダミーなら `<...>` / `your-...` / `changeme` 等の表記に |
 | `git push` が止まらない | hook が登録されていない | `/plugin list` で `git-secret-guard@cc-plugins ✔ enabled` を確認、必要なら `/reload-plugins` |
 | 「スキャン対象の差分なし」と出る | 既に push 済みで `@{push}..HEAD` が空 | 正常動作。スキャンするものが無いので素通り |
 | Claude 以外の経路で push したい | 手動 `git push` は対象外なので素通り | 設計通り。手動 push は北村さんの責任で実施 |

@@ -131,11 +131,12 @@ test('非テストファイルの明白な PASSWORD 直書きは引き続き検�
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
 
-test('非テストファイルの本物らしい40文字以上の英数字は引き続き検出する', () => {
+test('非テストファイルの40文字以上の英数字は表示するが止めない（情報のみ）', () => {
+  // 実測: 全履歴で止まった誤検出の主因。既知の形式は他のパターンが形で見るので止めない。
   const repo = mkRepo({ 'blob.txt': `payload = "${LONG_ALNUM}"\n` });
   const r = run(repo);
-  assert.strictEqual(r.status, 1);
-  assert.match(r.stderr, /40文字以上の長い英数字/);
+  assert.strictEqual(r.status, 0, `長い英数字だけでは止めない\n${r.stderr}`);
+  assert.match(r.stderr, /40文字以上の長い英数字が 1 件（止めません/);
 });
 
 // ---------------------------------------------------------------------------
@@ -280,11 +281,12 @@ test('"hash" を含むだけで無関係な変数名（HASHICORP_TOKEN 等）は
   assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
 });
 
-test('hashicorp のような hash を含むだけの語では長い英数字の除外が発動しない', () => {
+test('hashicorp のような hash を含むだけの語では長い英数字の除外が発動しない（情報表示に出る）', () => {
+  // 止めないパターンになったので、除外が効いているかどうかは「情報表示に出るか」で見る。
   const repo = mkRepo({ 'blob.txt': `hashicorp_ref = "${LONG_ALNUM}"\n` });
   const r = run(repo);
-  assert.strictEqual(r.status, 1, '"hashicorp" のような語のせいで本物らしい長い英数字を見逃してはいけない');
-  assert.match(r.stderr, /40文字以上の長い英数字/);
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stderr, /40文字以上の長い英数字が 1 件/, '"hashicorp" のせいで除外されてはいけない');
 });
 
 test('本物のシークレット行の直前が偽のファイルヘッダに見えるレイアウトでも検出を維持する', () => {
@@ -527,4 +529,168 @@ test('upstream 設定済み（実際の push 経路）では push 済みのコ�
   const r = run(work);
   assert.strictEqual(r.status, 0, 'push 済みのコミットまで走査してはいけない');
   assert.match(r.stderr, /スキャン対象の差分なし/);
+});
+
+// ---------------------------------------------------------------------------
+// 見逃しの修正（実測: 本物らしい値 18 ケース中 8 件を見逃していた）
+// ---------------------------------------------------------------------------
+// 値は連結で組み立てる（冒頭の理由）。VAL は数字を含む 24 文字（ランダム風）。
+
+const VAL = 'aB3xQ9mK2pL7vN4r' + 'T8sZ1cD5';
+const B64U = 'aB3xQ9mK2pL7vN4rT8sZ1cD5eF6gH7iJ8kL9mN0o';
+
+function scan(file, body) {
+  return run(mkRepo({ [file]: body }));
+}
+
+function assertBlocked(r, label, re) {
+  assert.strictEqual(r.status, 1, `${label} を見逃した\n${r.stderr}`);
+  if (re) assert.match(r.stderr, re);
+}
+
+function assertPassed(r, label) {
+  assert.strictEqual(r.status, 0, `${label} を誤検出した\n${r.stderr}`);
+}
+
+// --- 変数代入: 大文字小文字・キーの閉じクォート・SECRET_KEY 系 ---
+
+for (const [label, body] of [
+  ['小文字 password（Python）', `password = "${VAL}"`],
+  ['先頭だけ大文字 Password', `Password = "${VAL}"`],
+  ['小文字 api_key', `api_key = "${VAL}"`],
+  ['camelCase apiKey（JS）', `const apiKey = "${VAL}";`],
+  ['camelCase accessToken', `const accessToken = '${VAL}';`],
+  ['小文字 client_secret（YAML）', `client_secret: "${VAL}"`],
+  ['JSON のキーが引用符で囲まれた api_key', `{ "api_key": "${VAL}" }`],
+  ['JSON のキーが引用符で囲まれた大文字 API_TOKEN', `{ "API_` + `TOKEN": "${VAL}" }`],
+  ['Django の SECRET_KEY', `SECRET_` + `KEY = '${VAL}'`],
+  ['AWS の SECRET_ACCESS_KEY（引用符なし）', `AWS_SECRET_` + `ACCESS_KEY=${VAL}`],
+]) {
+  test(`変数代入を検出する: ${label}`, () => {
+    assertBlocked(scan('src/app.conf', body + '\n'), label, /PASSWORD\/API_TOKEN 等の変数代入/);
+  });
+}
+
+// 大文字小文字を区別しない側は誤検出を避けるため絞っている。絞りが外れていないこと。
+for (const [label, body] of [
+  ['識別子同士の代入', 'token = get_token(request)'],
+  ['関数呼び出し結果の代入', 'password = hash_password(raw_input_value)'],
+  ['別の変数への代入（数字なし）', 'password: passwordInputValue'],
+  ['型注釈', 'password: string;'],
+  ['ラベル文字列（数字なし）', `{ "type": "refresh_token" }`],
+  ['引用符なしの小文字（数字を含んでも識別子）', 'token = tokenizer2_instance'],
+  ['プレースホルダ（your-）', `api_key = "your-api-key-1234"`],
+  ['プレースホルダ（changeme）', `password = "changeme123"`],
+  ['環境変数参照', `api_key = "\${{ secrets.API_KEY_1 }}"`],
+  ['ハッシュ化済みの値', `password_hash = "${BCRYPT_SAMPLE}"`],
+]) {
+  test(`小文字側の誤検出を避ける: ${label}`, () => {
+    assertPassed(scan('src/app.py', body + '\n'), label);
+  });
+}
+
+test('小文字側もテスト/フィクスチャでは対象外', () => {
+  assertPassed(scan('tests/conf.py', `password = "${VAL}"\n`), 'テストファイルの小文字 password');
+});
+
+test('小文字側の限界: 数字を含まない英字だけの値は見逃す（誤検出との引き換えとして固定）', () => {
+  // この限界を黙って変えないためのテスト。変える場合は SKILL.md の記述も直す。
+  assertPassed(scan('src/app.py', 'password = "abcdefghijklmnopqrst"\n'), '数字なしの値');
+});
+
+// --- 既知トークン形式 ---
+
+for (const [label, body] of [
+  ['Anthropic sk-ant-', `k = "sk-ant-api03-${B64U}-_${B64U}"`],
+  ['OpenAI sk-proj-', `k = "sk-proj-${B64U}_${B64U}"`],
+  ['Stripe 本番キー', `k = "sk_` + `live_${B64U.replace(/[-_]/g, '').slice(0, 24)}"`],
+  ['Slack webhook', `u = "https://hooks.` + `slack.com/services/T0AB12CD3/B0EF45GH6/${B64U.slice(0, 24)}"`],
+  ['PKCS#8 秘密鍵', '-----BEGIN ' + 'PRIVATE KEY-----'],
+  ['暗号化 PKCS#8 秘密鍵', '-----BEGIN ENCRYPTED ' + 'PRIVATE KEY-----'],
+  ['PGP 秘密鍵', '-----BEGIN PGP ' + 'PRIVATE KEY BLOCK-----'],
+  ['npm トークン', `//registry.npmjs.org/:_authToken=npm_${B64U.replace(/[-_]/g, '').slice(0, 36)}`],
+]) {
+  test(`既知のトークン形式を検出する: ${label}`, () => {
+    assertBlocked(scan('src/app.txt', body + '\n'), label, /SaaS\/Cloud トークン形式/);
+  });
+}
+
+test('既知のトークン形式はテストファイルでも検出する（Anthropic）', () => {
+  assertBlocked(scan('tests/k.py', `k = "sk-ant-api03-${B64U}"\n`), 'テストファイル内の sk-ant-', /SaaS\/Cloud/);
+});
+
+test('語の途中の sk- には反応しない（task- / disk-）', () => {
+  assertPassed(scan('src/app.txt', `x = "task-ant-${B64U.slice(0, 30)}"\n`), 'task-ant-');
+  assertPassed(scan('src/app.txt', `x = "disk-proj-${B64U.slice(0, 30)}"\n`), 'disk-proj-');
+});
+
+test('Stripe のテスト用キーは対象外（公開ドキュメントの例が多い）', () => {
+  assertPassed(scan('src/app.txt', `k = "sk_` + `test_${B64U.replace(/[-_]/g, '').slice(0, 24)}"\n`), 'sk_test_');
+});
+
+// --- 認証情報つき URL / Bearer / JWT ---
+
+const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJ' + 'zdWIiOiIxMjM0NTY3ODkwIn0.' + B64U.slice(0, 30);
+
+for (const [label, body] of [
+  ['パスワード入りの DB 接続文字列', `DATABASE_URL=postgres://admin:${VAL}@db.internal:5432/app`],
+  ['パスワード入りの https URL', `u = "https://deploy:${VAL}@git.internal/repo.git"`],
+  ['Bearer ヘッダ', `headers = {'Authorization': 'Bearer ${B64U.slice(0, 30)}'}`],
+  ['JWT', `t = "${JWT}"`],
+]) {
+  test(`認証情報つきの形を検出する: ${label}`, () => {
+    assertBlocked(scan('src/app.py', body + '\n'), label, /認証情報つき URL \/ Bearer ヘッダ \/ JWT/);
+  });
+}
+
+for (const [label, body] of [
+  ['パスワードが password そのもの', 'DATABASE_URL=postgres://admin:password@localhost:5432/app'],
+  ['パスワードが環境変数展開', 'DATABASE_URL=postgres://admin:${DB_PASSWORD}@db:5432/app'],
+  ['パスワードがテンプレート', 'DATABASE_URL=postgres://admin:{{ db_password }}@db:5432/app'],
+  ['パスワードがプレースホルダ角括弧', 'DATABASE_URL=postgres://admin:<password>@db:5432/app'],
+  ['パスワードなしの URL', 'u = "https://example.com:8443/path"'],
+  ['Bearer の後が変数展開', 'curl -H "Authorization: Bearer ${API_TOKEN_VALUE}" https://x'],
+  ['Bearer の後が短い語', 'Authorization: Bearer <token>'],
+]) {
+  test(`認証情報つきの形の誤検出を避ける: ${label}`, () => {
+    assertPassed(scan('src/app.sh', body + '\n'), label);
+  });
+}
+
+test('認証情報つきの形はテストファイルでは対象外', () => {
+  assertPassed(scan('tests/db.test.js', `const u = "postgres://admin:${VAL}@db/app";\n`), 'テスト内の接続文字列');
+});
+
+// --- 40文字以上の英数字は止めない ---
+
+test('検出が別にあるときは、長い英数字は「参考」として添えるだけで理由にしない', () => {
+  const repo = mkRepo({
+    'a.py': `${K.password} = "${FAKE_PASSWORD_VALUE}"\n`,
+    'b.txt': `payload = "${LONG_ALNUM}"\n`,
+  });
+  const r = run(repo);
+  assertBlocked(r, '併存する本物の検出', /PASSWORD\/API_TOKEN 等の変数代入/);
+  assert.match(r.stderr, /（参考）40文字以上の長い英数字 1 件。これは止める理由にしていません/);
+});
+
+test('Google ドライブのファイル ID（44文字）だけでは止まらない（実測の誤検出）', () => {
+  assertPassed(scan('docs/note.md', 'fileId = "1dM1l1TUYPFCuce1UAqm4xS7OtMyXk4NQdb2Yuaupyg"\n'), 'ドライブの ID');
+});
+
+test('your- で始まるプレースホルダは、英字が続いても除外する（大文字側）', () => {
+  assertPassed(scan('src/app.py', `${K.apiToken} = "your-api-key-1234"\n`), 'your-api-key-1234');
+});
+
+test('your- の除外は語の途中では発動しない（notyour-...）', () => {
+  assertBlocked(scan('src/app.py', `${K.apiToken} = "notyour-realSecretXYZ9"\n`), 'notyour-...', /変数代入/);
+});
+
+test('URL のパスワード部は6文字以上だけを見る（短い値との区別を固定）', () => {
+  assertPassed(scan('src/app.sh', 'u=ssh://git:ab12@host.internal/repo\n'), '4文字のパスワード部');
+  assertBlocked(scan('src/app.sh', 'u=ssh://git:ab12cd@host.internal/repo\n'), '6文字のパスワード部', /認証情報つき URL/);
+});
+
+test('... で省略された値（ドキュメント中の例）は実値ではないので除外する', () => {
+  assertPassed(scan('docs/usage.md', `{ "api_key": "sk-abc...xyz0" }\n`), '省略記法の例');
+  assertPassed(scan('docs/usage.md', `${K.apiToken} = "abcd1234...wxyz"\n`), '省略記法の例（大文字側）');
 });

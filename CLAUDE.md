@@ -162,7 +162,7 @@ cwd のリポジトリを見ても push される中身とは別物になる。2
 
 | スクリプト | 見るもの | 止まったときの対処 |
 |---|---|---|
-| `secret-scan.sh` | 秘密の値（トークン・鍵・長い英数字） | 値を外に出す。誤検出なら `ALLOW_SECRETS=1` |
+| `secret-scan.sh` | 秘密の値（既知のトークン形式・鍵・`password` 等への代入・認証情報つき URL / Bearer / JWT。長い英数字は止めず情報表示のみ） | 値を外に出す。誤検出なら `ALLOW_SECRETS=1` |
 | `publish-scan.sh` | 公開してはいけない固有名、実在しそうなメールアドレス | 架空の値に置き換える。誤検出なら denylist のパターンを絞る |
 
 `publish-scan.sh` の denylist は `~/.cc-plugins/publish-denylist.txt`（リポジトリ外）にある。
