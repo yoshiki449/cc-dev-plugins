@@ -130,7 +130,7 @@ fi
 # 代償として、コミットメッセージや PR 本文にこれらの文字列を書いただけでも確認が出る（意図した挙動）。
 # 検出できないもの: gh の alias 経由（gh alias set）、別ファイルのスクリプトの中、base ブランチの ref を
 # 直接書き換える API（git/refs の PATCH）、手元からの git push（PR のマージ操作ではない）。
-MERGE_TEXT=$(printf '%s' "$COMMAND" | tr -d "\"'\`\\\\" | tr '\n\t' '  ' | sed -E 's/\$\{IFS\}|\$IFS/ /g')
+MERGE_TEXT=$(printf '%s' "$COMMAND" | tr '`' '(' | tr -d "\"'\\\\" | tr '\n\t' '  ' | sed -E 's/\$\{IFS\}|\$IFS/ /g')
 # 終端は空白に限らない（`gh pr merge;` `gh pr merge)` `gh pr merge&&` を取り逃がす。実測）。
 TERM_END='([^[:alnum:]_-]|$)'
 # gh の位置は、gh そのものか、`$` を含む語（`$G pr merge` / `${GH} pr merge`）。
@@ -145,15 +145,39 @@ GH_PR_DYNAMIC="(^|[^[:alnum:]_-])${GH_TOK}[[:space:]]+pr${PR_FLAGS}[[:space:]]+[
 # マージ API: `pulls` があり、`/merge` か `-merge`（`pulls/N/merge` `pulls/N/auto-merge`）が同じコマンドにあれば当てる
 # （番号が変数、URL を文字列連結、などの形を拾うため）。`mergeable` は当てない。
 # ブランチ同士をマージする `repos/.../merges` も、PR を経ずに base ブランチへ入るので同じ扱い。
+# **フラグの値に空白がある形**（`gh pr --repo "my org/r" merge`）は、引用符を外すと値が2語に割れて
+# 上のフラグ並びの正規表現が切れる（実測で素通り）。そこで、gh pr の直後が読み取り・作成系の
+# サブコマンドの区間（`;` `&` `|` `(` `)` まで）を先に取り除き、残った区間に `gh pr ... merge` があれば確認に倒す。
+# 取り除くのは区間だけなので、`gh pr view 1 && gh pr --repo "a b" merge` の後半は残る。
+GH_PR_BENIGN='gh[[:space:]]+pr[[:space:]]+(create|view|list|status|checks|diff|comment|edit|close|reopen|ready|review|checkout|lock|unlock)([^[:alnum:]_-][^;&|()]*)?'
+GH_PR_ANY="(^|[^[:alnum:]_-])${GH_TOK}[[:space:]]+pr[[:space:]]+[^;&|()]*[[:space:]]merge${TERM_END}"
+MERGE_REST=$(printf '%s' "$MERGE_TEXT" | sed -E "s/${GH_PR_BENIGN}//g")
 # GraphQL: mergePullRequest / enablePullRequestAutoMerge（auto-merge の予約）/ enqueuePullRequest（merge queue）/ mergeBranch。
 # hub merge も同じ。
 if printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_MERGE" \
   || printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_DYNAMIC" \
+  || printf '%s' "$MERGE_REST" | grep -qE "$GH_PR_ANY" \
   || { printf '%s' "$MERGE_TEXT" | grep -q 'pulls' && printf '%s' "$MERGE_TEXT" | grep -qE "[/-]merge${TERM_END}"; } \
   || printf '%s' "$MERGE_TEXT" | grep -qE "/repos/[^[:space:]]+/merges${TERM_END}|repos/[^[:space:]]+/merges${TERM_END}" \
   || printf '%s' "$MERGE_TEXT" | grep -qE 'mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|mergeBranch' \
   || printf '%s' "$MERGE_TEXT" | grep -qE "(^|[^[:alnum:]_-])hub[[:space:]]+merge${TERM_END}"; then
   emit_ask "$ASK_MERGE_REASON"
+  exit 0
+fi
+
+# --- マージ操作を隠せる構文: デコードして実行・シェルへの流し込み ---------------------
+# `echo Z2g… | base64 -d | sh` `printf '\x67\x68 pr merge' | sh` `xxd -r | sh`
+# `python3 -c "os.system(chr(103)+…)"` は、実行されるコマンドがテキストに現れないので、
+# 文字列の検出では原理的に塞げない（実測で素通り）。そこで**構文そのもの**を確認に倒す。
+# 通常の作業で使うことはまずないので、誤検出の代償は小さい。
+# これは「うっかり」と「よくある迂回」を止めるための網であり、悪意のある回避に耐える境界ではない。
+# 境界にするなら、GitHub 側のブランチ保護（必須レビュー）か、Claude Code の permissions.ask を併用する。
+ASK_HIDDEN_REASON="[dev-flow] デコードして実行する、またはシェルへ流し込むコマンドです。PR のマージを含んでいないか確かめたうえで、実行前に承認してください（マージは取り消せません）。"
+if printf '%s' "$MERGE_TEXT" | grep -qE 'base64[[:space:]]+(-[a-zA-Z]*[dD]|--decode)|xxd[[:space:]]+-[a-zA-Z]*r|openssl[[:space:]]+(enc|base64)[[:space:]]+[^|;&]*-d' \
+  || printf '%s' "$MERGE_TEXT" | grep -qE '(^|[^[:alnum:]_-])eval([^[:alnum:]_-]|$)' \
+  || printf '%s' "$MERGE_TEXT" | grep -qE '\|[[:space:]]*((sudo|env|command|exec|nohup)[[:space:]]+)*((ba|z|da|k)?sh|source)([^[:alnum:]_-]|$)' \
+  || printf '%s' "$MERGE_TEXT" | grep -qE '(python3?|node|perl|ruby)[[:space:]]+-[a-zA-Z]*[ce][[:space:]].*(system|exec|subprocess|spawn|popen)'; then
+  emit_ask "$ASK_HIDDEN_REASON"
   exit 0
 fi
 

@@ -342,10 +342,10 @@ test('バイパス: bash -c / sh -c / eval で包んでも素通りしない', (
 
   // クォートの中身が「地の文」ではなく**実際に実行されるコマンド**なので、
   // 誤検知対策のクォート除去をそのまま適用すると検査対象が丸ごと消えていた。
+  // eval は実行内容を読めない構文として別途確認に倒すので、ここ（注意書きの対象リポ解決）には含めない。
   for (const wrap of [
     `bash -c "cd ${repoB} && ${PR_CMD} --fill"`,
     `sh -c 'cd ${repoB} && ${PR_CMD} --fill'`,
-    `eval "cd ${repoB} && ${PR_CMD} --fill"`,
     `timeout 30 bash -c "cd ${repoB} && ${PR_CMD} --fill"`,
   ]) {
     const res = runHook({ cwd: repoA, command: wrap });
@@ -796,6 +796,39 @@ test('#64: コミットメッセージ・Issue 本文に書いただけでも確
   }
 });
 
+test('#64: デコードして実行する・シェルへ流し込む構文は確認になる（文字列では検出できないため）', (t) => {
+  // 実行されるコマンドがテキストに現れない。検出は構文そのものに対して行う。
+  // 悪意のある回避に耐える境界ではなく、うっかりとよくある迂回を止める網（コメント参照）。
+  const repo = makeRepo(t);
+  for (const [label, command] of [
+    ['base64 を復号してシェルへ', 'echo Z2ggcHIgbWVyZ2UgMQ== | base64 -d | sh'],
+    ['base64 --decode を bash -c に渡す', 'bash -c "$(echo Z2ggcHIgbWVyZ2UgMQ== | base64 --decode)"'],
+    ['printf の 16 進エスケープをシェルへ', "printf '\\x67\\x68 pr merge 1' | sh"],
+    ['xxd -r をシェルへ', 'xxd -r -p <<< 676820707220206d65726765 | bash'],
+    ['eval', 'eval "$CMD"'],
+    ['インタプリタで文字コードから組んで実行', "python3 -c \"import os; os.system(chr(103)+chr(104)+' pr merge 1')\""],
+  ]) {
+    const r = runHook({ cwd: repo, command });
+    assert.equal(r.outcome, ASK, `${label}: 確認が出ない: ${command}`);
+    assert.match(askReason(r), /デコード|シェル/, `${label}: 理由が隠れた実行になっていない`);
+  }
+});
+
+test('#64: 上の網は、日常のパイプ・インタプリタ起動には確認を出さない', (t) => {
+  const repo = makeRepo(t);
+  for (const command of [
+    'echo hello | cat',
+    'ls | grep foo',
+    'jq . f.json | head',
+    'cat f.json | python3 -m json.tool',
+    'node --test x.test.js',
+    'python3 -I script.py',
+    'gh pr create --title "will merge later" --body x', // 作成コマンドの文言に merge があっても当たらない
+  ]) {
+    assert.notEqual(runHook({ cwd: repo, command }).outcome, ASK, `過剰に確認が出ている: ${command}`);
+  }
+});
+
 test('#64: 検出を迂回できる書き方でも承認確認になる（セキュリティレビューの指摘10形態）', (t) => {
   const repo = makeRepo(t);
   const heredoc = (head, ...body) => [head, ...body, 'EOF'].join('\n');
@@ -832,6 +865,13 @@ test('#64: 検出を迂回できる書き方でも承認確認になる（セキ
     ['merge queue への投入（GraphQL）', "gh api graphql -f query='mutation{enqueuePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'"],
     ['mergeBranch（GraphQL）', "gh api graphql -f query='mutation{mergeBranch(input:{}){x}}'"],
     ['hub merge', 'hub merge https://github.com/o/r/pull/1'],
+    // 3回目のセキュリティレビュー（エンコードのずれ / 解析のずれ）で実測した形
+    ['フラグの値に空白がある', 'gh pr --repo "my org/r" merge 1'],
+    ['前半が読み取り系で後半がマージ', 'gh pr view 1 && gh pr --repo "a b" merge'],
+    ['読み取り系の命令置換（バッククォート）の中', 'gh pr view `' + MERGE_CMD + ' 1`'],
+    ['読み取り系の命令置換（$()）の中', 'gh pr view $(' + MERGE_CMD + ' 1)'],
+    // バッククォートを消すと「読み取り系の区間」が閉じる位置を見失い、区間ごとマージが消える
+    ['読み取り系の命令置換の中で、値に空白のあるフラグを付ける', 'gh pr view `gh pr --repo "a b" merge 1`'],
   ]) {
     assert.equal(runHook({ cwd: repo, command }).outcome, ASK, `${label}: 確認が出ない: ${command}`);
   }
