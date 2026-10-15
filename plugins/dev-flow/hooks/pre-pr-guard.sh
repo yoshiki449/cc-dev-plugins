@@ -130,7 +130,12 @@ fi
 # 代償として、コミットメッセージや PR 本文にこれらの文字列を書いただけでも確認が出る（意図した挙動）。
 # 検出できないもの: gh の alias 経由（gh alias set）、別ファイルのスクリプトの中、base ブランチの ref を
 # 直接書き換える API（git/refs の PATCH）、手元からの git push（PR のマージ操作ではない）。
-MERGE_TEXT=$(printf '%s' "$COMMAND" | tr '`' '(' | tr -d "\"'\\\\" | tr '\n\t' '  ' | sed -E 's/\$\{IFS\}|\$IFS/ /g')
+# ${IFS} / $IFS の空白への置き換えは、**引用符を外す前**に行う。外したあとだと `$IFS'pr'` の境界が
+# 失われて `$IFSpr`（別の変数）と区別できない。また `$IFS_X` のような別名の変数を巻き込まないよう、
+# `$IFS` の直後が識別子の文字のときは置き換えない（置き換えると `$` が消えて動的な組み立てを見落とす）。
+MERGE_TEXT=$(printf '%s' "$COMMAND" \
+  | sed -E 's/\$\{IFS\}/ /g; s/\$IFS([^[:alnum:]_]|$)/ \1/g' \
+  | tr '`' '(' | tr -d "\"'\\\\" | tr '\n\t' '  ')
 # 終端は空白に限らない（`gh pr merge;` `gh pr merge)` `gh pr merge&&` を取り逃がす。実測）。
 TERM_END='([^[:alnum:]_-]|$)'
 # gh の位置は、gh そのものか、`$` を含む語（`$G pr merge` / `${GH} pr merge`）。

@@ -814,6 +814,12 @@ test('#64: デコードして実行する・シェルへ流し込む構文は確
   }
 });
 
+test('#64: 実行しても gh を引数なしで呼ぶだけの形は、マージとして扱わない', (t) => {
+  // `gh$IFSpr$IFSmerge` は変数 $IFSpr と $IFSmerge（どちらも空）なので、実行されるのは `gh` だけ。
+  const repo = makeRepo(t);
+  assert.notEqual(runHook({ cwd: repo, command: 'gh$IFSpr$IFSmerge 1' }).outcome, ASK);
+});
+
 test('#64: 上の網は、日常のパイプ・インタプリタ起動には確認を出さない', (t) => {
   const repo = makeRepo(t);
   for (const command of [
@@ -854,7 +860,10 @@ test('#64: 検出を迂回できる書き方でも承認確認になる（セキ
     ['サブシェル', `(${MERGE_CMD})`],
     ['&& が続く', `${MERGE_CMD}&&echo`],
     ['${IFS} で区切る', 'gh${IFS}pr${IFS}merge 1'],
-    ['$IFS で区切る', 'gh$IFS' + 'pr$IFS' + 'merge 1'],
+    // `gh$IFSpr` は別の変数 $IFSpr なので区切りにならない。区切りになるのは、直後が識別子でない形
+    ['$IFS で区切る（引用符で境界を作る）', "gh$IFS'pr'$IFS'merge' 1"],
+    // $IFS_X は IFS とは別の変数。IFS として空白に置き換えると `$` が消えて動的な組み立てを見落とす
+    ['IFS で始まる別名の変数をサブコマンドにする', 'M=merge; IFS_X=$M; gh pr $IFS_X 1'],
     ['サブコマンドを変数に入れる', 'M=merge; gh pr $M 1'],
     ['サブコマンドをコマンド置換で作る', 'gh pr $(echo merge) 1'],
     ['サブコマンドをブレース展開で作る', 'gh pr {merge,} 1'],
