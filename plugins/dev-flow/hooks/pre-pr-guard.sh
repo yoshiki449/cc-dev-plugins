@@ -118,17 +118,26 @@ else
 fi
 
 # --- PR マージ: 常に承認確認 ---------------------------------------------------
-# gh pr merge は SCAN（クォート除去済み）で見る。コミットメッセージ等に書かれた文字列で
-# 確認が出るのを避けるため。ラッパー経由のときは SCAN が原文なので中身も見える。
-# 絶対パス起動（/usr/bin/gh）と、ラッパーの引用符の直後（`bash -c "gh pr merge"`）も拾うので、
-# 直前の区切りに `/` と引用符を含める。
-# マージ API は URL を引用符で囲んで渡す書き方があり、SCAN だと URL ごと消える。
+# **クォート・ヒアドキュメントを「データ」として消してから探す方式は使わない。**
+# 消す側とシェルの解釈がずれると、検出対象ごと消えて承認なしのマージが通る（実測で再現した10形態）:
+#   gh pr "merge" / gh "pr" merge / mer\ge（語の内側の引用符・バックスラッシュ）、
+#   `echo it\'s; gh pr merge; echo 'x'`（エスケープされた引用符を引用の開始と誤認して間を消す）、
+#   `echo $((1 << EOF))` の次行（算術の << をヒアドキュメントと誤認して以降を落とす）、
+#   `sh -s <<EOF` / `python3 - <<EOF`（本体が実行されるのに、シェル直渡し以外はデータ扱い）、
+#   gh pr -R o/r merge（フラグを挟む）、pulls/$N/merge（番号が変数）、行継続での分割。
 # 見落としはそのまま承認なしのマージになる一方、見すぎた場合の代償は確認が1回増えるだけなので、
-# こちらは引用符の**文字だけ**を外した SOURCE_TEXT で見る（内容は消さない）。
+# 内容は消さず、引用符・バックスラッシュ・バッククォートの**文字だけ**を外し、改行は空白にして探す。
+# 代償として、コミットメッセージや PR 本文にこれらの文字列を書いただけでも確認が出る（意図した挙動）。
+# 検出できないもの: gh の alias 経由（gh alias set）、別ファイルのスクリプトの中、変数に組み立てたコマンド。
+MERGE_TEXT=$(printf '%s' "$COMMAND" | tr -d "\"'\`\\\\" | tr '\n\t' '  ')
+# gh pr [フラグ [値]]... merge。`gh pr -R o/r merge` のように gh pr の直後にフラグが挟まる形を含む。
+# gh pr create --body "... merge ..." のような作成コマンドは、create がフラグではないので当たらない。
+GH_PR_MERGE='(^|[^[:alnum:]_-])gh[[:space:]]+pr([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+merge([[:space:]]|$)'
+# マージ API は `pulls` と `/merge` が同じコマンドにあれば当てる（番号が変数、URL を文字列連結、などの形を拾うため）。
 # GraphQL の mergePullRequest / enablePullRequestAutoMerge（auto-merge の予約）も同じ扱い。
-NOQUOTE=$(printf '%s' "$SOURCE_TEXT" | tr -d "\"'\`")
-if printf '%s' "$SCAN" | grep -qE '(^|[;&|/(`"'"'"'[:space:]])gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' \
-  || printf '%s' "$NOQUOTE" | grep -qE '/pulls/[0-9]+/merge|mergePullRequest|enablePullRequestAutoMerge'; then
+if printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_MERGE" \
+  || { printf '%s' "$MERGE_TEXT" | grep -q 'pulls' && printf '%s' "$MERGE_TEXT" | grep -qE '/merge([^[:alnum:]_-]|$)'; } \
+  || printf '%s' "$MERGE_TEXT" | grep -qE 'mergePullRequest|enablePullRequestAutoMerge'; then
   emit_ask "$ASK_MERGE_REASON"
   exit 0
 fi

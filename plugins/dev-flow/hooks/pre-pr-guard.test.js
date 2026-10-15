@@ -743,20 +743,18 @@ test('#64: MCP の merge_pull_request も承認確認になる（クラウドは
   askReason(r);
 });
 
-test('#64: マージ以外は承認確認にならない（過剰確認の防止）', (t) => {
+test('#64: マージ以外は承認確認にならない（PR 作成・閲覧・ローカルの git merge）', (t) => {
   const repo = makeRepo(t);
   writeMarker(repo, 'main');
   for (const command of [
     'gh pr view 12',
+    'gh pr view 12 --json mergeable',
     'gh pr list --state merged',
     'gh pr checks 12',
     'gh pr create --fill', // PR 作成は止めない（マーカー一致なので注意書きも出ない）
+    'gh pr create --title t --body-file b.md',
     'git merge feature/x', // ローカルの git merge は PR のマージではないので対象外
     'git status',
-    // コミットメッセージ・Issue 本文に書かれた文字列
-    `git commit -m "${MERGE_CMD} は呼ばない"`,
-    `git commit -m '${MERGE_CMD} は呼ばない'`,
-    ['gh issue create --title t --body-file - <<\'EOF\'', `手順: ${MERGE_CMD} 12`, 'gh api -X PUT repos/o/r/pulls/12/merge', 'EOF'].join('\n'),
   ]) {
     const r = runHook({ cwd: repo, command });
     assert.notEqual(r.outcome, ASK, `過剰に承認確認が出ている: ${command}`);
@@ -768,12 +766,43 @@ test('#64: マージ以外は承認確認にならない（過剰確認の防止
   );
 });
 
-test('#64: 引用符の中のマージ API の URL でも確認が出る（見落としより過剰確認を選ぶ）', (t) => {
-  // クォート内の文字列は通常は無視するが、API の URL は引用符で囲んで渡す書き方があり、
-  // 無視すると承認なしのマージが通る。代償として、コミットメッセージに URL を書いても確認が出る。
+test('#64: コミットメッセージ・Issue 本文に書いただけでも確認が出る（見落としより過剰確認を選ぶ）', (t) => {
+  // クォートやヒアドキュメントを「データ」として消してから探す方式は、消す側とシェルの解釈がずれると
+  // 検出対象ごと消える（下のバイパス群）。承認なしのマージは取り返しがつかないので、
+  // 内容は消さずに探す。代償として、文字列を書いただけでも確認が1回出る。意図した挙動。
   const repo = makeRepo(t);
-  const r = runHook({ cwd: repo, command: 'git commit -m "repos/o/r/pulls/12/merge を叩く"' });
-  assert.equal(r.outcome, ASK);
+  for (const command of [
+    `git commit -m "${MERGE_CMD} は呼ばない"`,
+    'git commit -m "repos/o/r/pulls/12/merge を叩く"',
+    ['gh issue create --title t --body-file - <<\'EOF\'', `手順: ${MERGE_CMD} 12`, 'EOF'].join('\n'),
+  ]) {
+    assert.equal(runHook({ cwd: repo, command }).outcome, ASK, `確認が出ない: ${command}`);
+  }
+});
+
+test('#64: 検出を迂回できる書き方でも承認確認になる（セキュリティレビューの指摘10形態）', (t) => {
+  const repo = makeRepo(t);
+  const heredoc = (head, ...body) => [head, ...body, 'EOF'].join('\n');
+  for (const [label, command] of [
+    ['語の外側の引用符', `gh pr "merge" 12`],
+    ['gh を引用符で囲む', `gh "pr" merge 12`],
+    ['語の内側のバックスラッシュ', 'gh pr mer\\ge 12'],
+    ['gh pr の直後にフラグ', `gh pr -R o/r merge 12`],
+    ['--repo を挟む', `gh pr --repo o/r merge 12`],
+    // エスケープされた引用符は引用の開始ではない。開始と誤認すると間の merge が消える。
+    ['エスケープされた引用符で挟む', `echo it\\'s; ${MERGE_CMD} 1; echo 'x'`],
+    ['エスケープされたダブルクォートで挟む', `echo \\"; ${MERGE_CMD} 1; echo \\"`],
+    // 算術の << はヒアドキュメントではない。誤認すると以降の行が丸ごと落ちる。
+    ['算術の << を挟む', heredoc('echo $((1 << EOF))', `${MERGE_CMD} 1`)],
+    // 本体が実行される形はシェル直渡し（bash <<）だけではない。
+    ['sh -s にヒアドキュメント', heredoc("sh -s <<'EOF'", `${MERGE_CMD} 1`)],
+    ['インタプリタにヒアドキュメント', heredoc("python3 - <<'EOF'", 'import subprocess', 'subprocess.run(["gh","api","-X","PUT","repos/o/r/pulls/1/merge"])')],
+    ['マージ API の番号が変数', 'gh api -X PUT repos/o/r/pulls/$N/merge'],
+    ['マージ API の URL を文字列連結', "python3 -c \"import requests; requests.put(base + '/pulls/' + n + '/merge')\""],
+    ['行継続での分割', 'gh pr \\\n merge 1'],
+  ]) {
+    assert.equal(runHook({ cwd: repo, command }).outcome, ASK, `${label}: 確認が出ない: ${command}`);
+  }
 });
 
 // --- 登録（hooks.json）------------------------------------------------------------
