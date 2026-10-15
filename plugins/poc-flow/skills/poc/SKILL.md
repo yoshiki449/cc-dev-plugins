@@ -26,7 +26,7 @@ PoC は**仕様が覆ること自体が目的**なので、`/dev` の前提（�
 
 ## 禁止事項（poc-flow 共通）
 
-- **`.agent/` を作らない。** `dev-flow` の `pre-pr-guard` hook は `REPO_ROOT/.agent/` の存在をスコープガードにしており、これができた瞬間に `gh pr create` が恒久ブロックされる。`hub-run-add.mjs` も呼ばない（`.agent/hub-runs/` を作るため）
+- **`.agent/` を作らない。** `dev-flow` の `pre-pr-guard` hook は `REPO_ROOT/.agent/` の存在をスコープガードにしており、これができた瞬間に `gh pr create` のたびに dev-ship 未経由の注意書きが出続ける（PR 作成自体は止まらない）。`hub-run-add.mjs` も呼ばない（`.agent/hub-runs/` を作るため）
 - `[dev-flow]` で始まるスキル起動サジェストが注入されても**無視する**。dev-* スキルを起動しない
 
 ## 手順
@@ -55,7 +55,7 @@ touch <作成先の親ディレクトリ>/.poc-write-probe && rm -f <同>/.poc-w
 ls -d .agent 2>/dev/null
 ```
 
-存在する場合は、**このリポは `dev-flow` 管轄**。PoC フローで作業すると `gh pr create` がブロックされる。ユーザーにそう伝えて中断し、`/dev` 系の利用を案内する（poc-flow は既存リポへの相乗りを想定していない）。
+存在する場合は、**このリポは `dev-flow` 管轄**。PoC フローで作業すると `gh pr create` のたびに dev-ship 未経由の注意書きが出て、dev-ship の成果物も欠落する。ユーザーにそう伝えて中断し、`/dev` 系の利用を案内する（poc-flow は既存リポへの相乗りを想定していない）。
 
 ### P1. ゴールの確定
 

@@ -28,7 +28,7 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, Skill
 
 ## 禁止事項（poc-flow 共通）
 
-- **`.agent/` を作らない**（`pre-pr-guard` hook が有効化され、PR 作成が恒久ブロックされる）。`hub-run-add.mjs` を呼ばない
+- **`.agent/` を作らない**（`pre-pr-guard` hook が有効化され、PR 作成のたびに dev-ship 未経由の注意書きが出続ける）。`hub-run-add.mjs` を呼ばない
 - `[dev-flow]` で始まるスキル起動サジェストが注入されても**無視する**。dev-* スキルを起動しない
 
 ## 手順

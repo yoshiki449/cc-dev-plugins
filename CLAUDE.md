@@ -44,7 +44,7 @@ worktree ごとに消えるため。記法は dev-flow の `skills/_shared/refer
 | plugin | 役割 |
 |---|---|
 | **dev-flow** | 開発フロー一式（`/dev` ルーター＋フェーズ別スキル＋半自律ループ `dev-loop`＋自律フロー `auto-*`＋成果物ハブ `dev-hub`＋変更理解 `explain-diff`）。詳しい変更履歴は `plugins/dev-flow/.claude-plugin/plugin.json` の description にある |
-| **poc-flow** | PoC 専用の軽量フロー。品質ゲートはブラウザ実機スモーク1本のみ。成果物は `.poc/` 配下に置き `.agent/` を作らない（`pre-pr-guard` と `suggest-dev-phase` が `.agent/` の存在をスコープガードにしているため、1回でも作ると PR 作成が恒久ブロックされる） |
+| **poc-flow** | PoC 専用の軽量フロー。品質ゲートはブラウザ実機スモーク1本のみ。成果物は `.poc/` 配下に置き `.agent/` を作らない（`pre-pr-guard` と `suggest-dev-phase` が `.agent/` の存在をスコープガードにしているため、1回でも作ると PR 作成のたびに dev-ship 未経由の注意書きが出続ける。PR 作成自体は止まらない） |
 | **cc-meta** | この marketplace 自身の管理（`/promote-check` `/promote-skill` `/mark-keep`） |
 | **git-secret-guard** | `git push` 直前の走査。秘密の値（`secret-scan.sh`）と公開してはいけない固有名（`publish-scan.sh`）の2本 |
 

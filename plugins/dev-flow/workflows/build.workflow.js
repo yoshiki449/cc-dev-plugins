@@ -1243,7 +1243,7 @@ const explainDoc = (typeof explainDocRaw === 'string' && explainDocRaw.trim().st
 const prResult = !CREATE_PR ? null : await agent(
   `PR を作成してください。
 - gh pr create の前に必ず実行: REPO_ROOT=$(git rev-parse --show-toplevel); GIT_COMMON=$(git -C "$REPO_ROOT" rev-parse --git-common-dir); case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$REPO_ROOT/$GIT_COMMON" ;; esac; git -C "$REPO_ROOT" branch --show-current > "$GIT_COMMON/dev-ship-active"
-  （dev-flow の pre-pr-guard hook がマーカー無しの gh pr create をブロックするため。auto-build は Finalize で成果物生成済みなので書き込んでよい）
+  （dev-flow の pre-pr-guard hook はマーカー無しの gh pr create に dev-ship 未経由の注意書きを出すため。auto-build は Finalize で成果物生成済みなので書き込んでよい。マージは承認が要るので、PR を作るだけで gh pr merge は呼ばない）
 - title: "auto-build: ${TASK_ID}"
 - body には以下を必ず含める:
   - Summary（実装した Phase の一覧）

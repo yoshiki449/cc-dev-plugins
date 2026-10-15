@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 
-// pre-pr-guard.sh（dev-ship 経由チェック）のテスト。
+// pre-pr-guard.sh（PR マージの承認確認 + dev-ship 未経由 PR 作成の注意書き）のテスト。
 // 実行: node --test plugins/dev-flow/hooks/pre-pr-guard.test.js
 //
-// このガードは pre-edit-protect と同じく「ブロックし損ねても何も起きない」種類の失敗をする。
-// exit 0 は「正当な通過」と「ガードが無効化されている」の区別がつかないので、
-// 素通りさせるべきケースとブロックすべきケースを両方向で固定する。
+// このフックは pre-edit-protect と同じく「効かなくても何も起きない」種類の失敗をする。
+// exit 0 は「正当な通過」とフックが無効化されている状態の区別がつかないので、
+// 黙って通すべきケースと、注意書き・承認確認を出すべきケースを両方向で固定する。
+// 結果は 4 通り（classify を参照）: silent / remind / ask / block。PR 作成は block にならない。
+//
+// Issue #64: PR 作成のブロックをやめ、マージだけ承認確認を必須にした。それ以前の
+// 回帰テスト（#36 / #39 / #68）は、ブロックの代わりに「注意書きが出る」ことで同じ性質を固定している。
 //
 // Issue #36 / #39 由来の回帰テスト:
 //   #36 マーカーが .agent/ にあったため、worktree（.agent/ が無い）では
@@ -80,22 +84,48 @@ function writeMarker(dir, branch) {
   fs.writeFileSync(markerPath(dir), `${branch}\n`);
 }
 
-function runHook({ cwd, command }) {
-  return spawnSync('bash', [HOOK], {
-    input: JSON.stringify({ cwd, tool_input: { command } }),
-    encoding: 'utf8',
-    env: GIT_ENV,
-  });
+// フックの結果を 4 通りに分類する。exit 0 だけでは「何も言わず通した」と「注意書きを出して通した」と
+// 「承認確認を挟んだ」を区別できないため、stdout の JSON まで見る。
+//   silent: exit 0 で出力なし / remind: additionalContext を注入 / ask: 承認確認を要求 / block: exit 2
+function classify(res) {
+  if (res.status === 2) return 'block';
+  if (res.status !== 0) return `exit${res.status}`;
+  if (res.stdout.trim() === '') return 'silent';
+  const out = JSON.parse(res.stdout).hookSpecificOutput;
+  if (out.permissionDecision === 'ask') return 'ask';
+  if (typeof out.additionalContext === 'string') return 'remind';
+  return 'other';
 }
 
-const PASS = 0;
-const BLOCK = 2;
+function withOutcome(res) {
+  res.outcome = classify(res);
+  return res;
+}
+
+function runHook({ cwd, command, tool = 'Bash' }) {
+  return withOutcome(
+    spawnSync('bash', [HOOK], {
+      input: JSON.stringify({ cwd, tool_name: tool, tool_input: { command } }),
+      encoding: 'utf8',
+      env: GIT_ENV,
+    }),
+  );
+}
+
+// 注意書きの本文（additionalContext）を取り出す。
+function context(res) {
+  return JSON.parse(res.stdout).hookSpecificOutput.additionalContext;
+}
+
+const SILENT = 'silent';
+const REMIND = 'remind';
+const ASK = 'ask';
 
 // --- 対象外のコマンド（既存挙動の維持）-----------------------------------------
 
 test('PR 作成を含まないコマンドは対象外', (t) => {
   const repo = makeRepo(t);
-  assert.equal(runHook({ cwd: repo, command: 'git status' }).status, PASS);
+  assert.equal(runHook({ cwd: repo, command: 'git status' }).outcome, SILENT);
 });
 
 test('クォート内の PR 作成コマンドは誤検知しない（シングル/ダブル/バッククォート）', (t) => {
@@ -111,48 +141,50 @@ test('クォート内の PR 作成コマンドは誤検知しない（シング�
     ['バッククォート', 'echo `cd /tmp && ' + PR_CMD + ' --fill`'],
   ]) {
     const res = runHook({ cwd: repo, command: quoted });
-    assert.equal(res.status, PASS, `${label}クォート内の文字列でブロックされている`);
+    assert.equal(res.outcome, SILENT, `${label}クォート内の文字列で発火している`);
   }
 });
 
 test('git リポジトリ外での PR 作成は対象外（cd 指定なし）', (t) => {
   const dir = mkdtemp(t);
-  assert.equal(runHook({ cwd: dir, command: PR_CMD }).status, PASS);
+  assert.equal(runHook({ cwd: dir, command: PR_CMD }).outcome, SILENT);
 });
 
 test('.agent/ を持たないリポジトリでは発火しない（スコープガード）', (t) => {
   const repo = makeRepo(t, { agent: false });
   git(repo, ['checkout', '-qb', 'feature/x']);
-  assert.equal(runHook({ cwd: repo, command: PR_CMD }).status, PASS);
+  assert.equal(runHook({ cwd: repo, command: PR_CMD }).outcome, SILENT);
 });
 
 // --- 基本形: main clone 直下 ----------------------------------------------------
 
-test('マーカーが無ければブロックする', (t) => {
+test('マーカーが無ければ注意書きを出す（止めない）', (t) => {
   const repo = makeRepo(t);
   git(repo, ['checkout', '-qb', 'feature/x']);
   const res = runHook({ cwd: repo, command: `${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK);
-  assert.match(res.stderr, /dev-ship/);
+  assert.equal(res.status, 0, 'PR 作成が止められている');
+  assert.equal(res.outcome, REMIND);
+  assert.match(context(res), /dev-ship/);
+  assert.ok(!res.stdout.includes('permissionDecision'), 'PR 作成の権限フローに触れている');
 });
 
-test('マーカーが現ブランチと一致すれば通す', (t) => {
+test('マーカーが現ブランチと一致すれば黙って通す', (t) => {
   const repo = makeRepo(t);
   git(repo, ['checkout', '-qb', 'feature/x']);
   writeMarker(repo, 'feature/x');
-  assert.equal(runHook({ cwd: repo, command: `${PR_CMD} --fill` }).status, PASS);
+  assert.equal(runHook({ cwd: repo, command: `${PR_CMD} --fill` }).outcome, SILENT);
 });
 
-test('マーカーが別ブランチ名ならブロックする', (t) => {
+test('マーカーが別ブランチ名なら注意書きを出す', (t) => {
   const repo = makeRepo(t);
   git(repo, ['checkout', '-qb', 'feature/x']);
   writeMarker(repo, 'main');
-  assert.equal(runHook({ cwd: repo, command: `${PR_CMD} --fill` }).status, BLOCK);
+  assert.equal(runHook({ cwd: repo, command: `${PR_CMD} --fill` }).outcome, REMIND);
 });
 
 // --- Issue #36: worktree 規約との噛み合わせ --------------------------------------
 
-test('#36①: worktree から ship しても誤ブロックされない（cwd が main clone でも）', (t) => {
+test('#36①: worktree から ship しても注意書きが出ない（cwd が main clone でも）', (t) => {
   const repo = makeRepo(t);
   const wt = addWorktree(repo, 'issue-1', 'fix/issue-1');
   // dev-ship E0 は ship 対象（worktree）のブランチ名を共有マーカーに書く。
@@ -160,7 +192,7 @@ test('#36①: worktree から ship しても誤ブロックされない（cwd �
 
   // cwd は main clone のまま（worktree 規約では git -C で操作するので普通に起きる）。
   const res = runHook({ cwd: repo, command: `cd ${wt} && ${PR_CMD} --fill` });
-  assert.equal(res.status, PASS, 'worktree の正当な ship がブロックされている（#36①）');
+  assert.equal(res.outcome, SILENT, 'worktree の正当な ship に注意書きが出ている（#36①）');
 });
 
 test('#36②: main clone に main と書かれたマーカーが残っていても worktree の PR は素通りしない', (t) => {
@@ -171,8 +203,8 @@ test('#36②: main clone に main と書かれたマーカーが残っていて�
 
   const res = runHook({ cwd: repo, command: `cd ${wt} && ${PR_CMD} --fill` });
   assert.equal(
-    res.status,
-    BLOCK,
+    res.outcome,
+    REMIND,
     'ship 対象ブランチと無関係なマーカーでガードが満たされている（#36②の恒久無効化）',
   );
 });
@@ -183,7 +215,7 @@ test('#36: worktree に .agent/ が無くてもスコープガードが発火す
   assert.ok(!fs.existsSync(path.join(wt, '.agent')), 'fixture の前提が崩れている');
 
   const res = runHook({ cwd: repo, command: `cd ${wt} && ${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK, 'worktree では .agent/ が無いためガードごと素通りしている（#36）');
+  assert.equal(res.outcome, REMIND, 'worktree では .agent/ が無いためガードごと素通りしている（#36）');
 });
 
 test('#36: 旧マーカー（.agent/.dev-ship-active）は受け入れない', (t) => {
@@ -192,30 +224,31 @@ test('#36: 旧マーカー（.agent/.dev-ship-active）は受け入れない', (
   fs.writeFileSync(path.join(repo, '.agent', '.dev-ship-active'), 'feature/old\n');
 
   const res = runHook({ cwd: repo, command: `${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK, '旧マーカーを受け入れると #36② の穴が残る');
+  assert.equal(res.outcome, REMIND, '旧マーカーを受け入れると #36② の穴が残る');
 });
 
 test('cd の構文: ~ 展開（HOME 配下のリポを cd 先に指定できる）', (t) => {
-  // 実装は `~` / `~/...` だけを展開する（$VAR は展開できないので fail-closed に倒れる）。
+  // 実装は `~` / `~/...` だけを展開する（$VAR は展開できないので解決失敗で黙って通る）。
   // HOME 配下に fixture を作らないと検証できないため、HOME を差し替えて実行する。
   const home = mkdtemp(t);
   const repoB = makeRepo(t);
-  git(repoB, ['checkout', '-qb', 'feature/b']);
-  writeMarker(repoB, 'feature/b');
+  git(repoB, ['checkout', '-qb', 'feature/b']); // 未経由。展開が効けば repoB の注意書きが出る
 
   const repoA = makeRepo(t);
   // ~ が repoB を指すように、HOME 配下に repoB へのシンボリックリンクを置く
   fs.symlinkSync(repoB, path.join(home, 'target'));
 
-  const res = spawnSync('bash', [HOOK], {
+  const res = withOutcome(spawnSync('bash', [HOOK], {
     input: JSON.stringify({
       cwd: repoA,
       tool_input: { command: `cd ~/target && ${PR_CMD} --fill` },
     }),
     encoding: 'utf8',
     env: { ...GIT_ENV, HOME: home },
-  });
-  assert.equal(res.status, PASS, '~ 展開が効かず対象リポを解決できていない');
+  }));
+  // 展開できないと対象リポを解決できず、解決失敗は黙って通すので、SILENT では取り違えと区別できない。
+  assert.equal(res.outcome, REMIND, '~ 展開が効かず対象リポを解決できていない');
+  assert.ok(context(res).includes(repoB), '注意書きの対象が展開先のリポになっていない');
 });
 
 // --- Issue #39: cd で別リポへ移動するケース --------------------------------------
@@ -227,7 +260,7 @@ test('#39: cd で移動した先のリポのマーカーとブランチで判定
   writeMarker(repoB, 'feature/b');
 
   const res = runHook({ cwd: repoA, command: `cd ${repoB} && ${PR_CMD} --fill` });
-  assert.equal(res.status, PASS, 'リポB の正当なマーカーが評価されていない');
+  assert.equal(res.outcome, SILENT, 'リポB の正当なマーカーが評価されていない');
 });
 
 test('#39: cwd 側にマーカーが残っていても別リポの PR は素通りしない（偽陰性）', (t) => {
@@ -238,25 +271,25 @@ test('#39: cwd 側にマーカーが残っていても別リポの PR は素通�
   git(repoB, ['checkout', '-qb', 'feature/b']); // リポB は dev-ship を経由していない
 
   const res = runHook({ cwd: repoA, command: `cd ${repoB} && ${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK, 'cwd 側のマーカーで別リポの PR が素通りしている（#39 偽陰性）');
+  assert.equal(res.outcome, REMIND, 'cwd 側のマーカーで別リポの PR が素通りしている（#39 偽陰性）');
 });
 
-test('#39: ブロックメッセージのマーカーパスとブランチが対象リポのものになる', (t) => {
+test('#39: 注意書きのマーカーパスとブランチが対象リポのものになる', (t) => {
   const repoA = makeRepo(t);
   const repoB = makeRepo(t);
   writeMarker(repoA, 'main');
   git(repoB, ['checkout', '-qb', 'feature/b']);
 
   const res = runHook({ cwd: repoA, command: `cd ${repoB} && ${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK);
+  assert.equal(res.outcome, REMIND);
   assert.ok(
-    res.stderr.includes(markerPath(repoB)),
-    `案内が対象リポのマーカーパスになっていない: ${res.stderr}`,
+    context(res).includes(markerPath(repoB)),
+    `案内が対象リポのマーカーパスになっていない: ${context(res)}`,
   );
-  assert.ok(!res.stderr.includes(repoA), '案内に cwd 側のリポのパスが混ざっている');
+  assert.ok(!context(res).includes(repoA), '案内に cwd 側のリポのパスが混ざっている');
 });
 
-test('#39: cd 先が解決できなければ fail-closed でブロックする', (t) => {
+test('#39: cd 先が解決できなければ黙って通す（ブロックも注意書きもしない）', (t) => {
   const repoA = makeRepo(t);
   writeMarker(repoA, 'main'); // cwd 側は「正当」な状態
 
@@ -264,26 +297,27 @@ test('#39: cd 先が解決できなければ fail-closed でブロックする',
     cwd: repoA,
     command: `cd /nonexistent/path/xyz && ${PR_CMD} --fill`,
   });
-  assert.equal(res.status, BLOCK, '解決不能な cd 先が素通りしている（fail-closed でない）');
+  // ブロックしない設計になったので、判定材料が欠けた状態で注意書きを出して誤誘導することも避ける。
+  assert.equal(res.outcome, SILENT, '解決不能な cd 先でブロックまたは注意書きが出ている');
 });
 
-test('#39: cd 先が git リポジトリでなければ fail-closed でブロックする', (t) => {
+test('#39: cd 先が git リポジトリでなければ黙って通す', (t) => {
   const repoA = makeRepo(t);
   writeMarker(repoA, 'main');
   const plain = mkdtemp(t);
 
   const res = runHook({ cwd: repoA, command: `cd ${plain} && ${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK, 'git リポでない cd 先が素通りしている');
+  assert.equal(res.outcome, SILENT, 'git リポでない cd 先でブロックまたは注意書きが出ている');
 });
 
 test('#39: クォート付きの cd パスも解決できる', (t) => {
   const repoA = makeRepo(t);
   const repoB = makeRepo(t);
-  git(repoB, ['checkout', '-qb', 'feature/b']);
-  writeMarker(repoB, 'feature/b');
+  git(repoB, ['checkout', '-qb', 'feature/b']); // 未経由
 
   const res = runHook({ cwd: repoA, command: `cd "${repoB}" && ${PR_CMD} --fill` });
-  assert.equal(res.status, PASS, 'クォート付きの cd が解決できていない');
+  assert.equal(res.outcome, REMIND, 'クォート付きの cd が解決できていない');
+  assert.ok(context(res).includes(repoB), '注意書きの対象が cd 先のリポになっていない');
 });
 
 // --- セルフレビューで見つかったバイパス（いずれも main の時点から存在した穴）-------
@@ -315,51 +349,48 @@ test('バイパス: bash -c / sh -c / eval で包んでも素通りしない', (
     `timeout 30 bash -c "cd ${repoB} && ${PR_CMD} --fill"`,
   ]) {
     const res = runHook({ cwd: repoA, command: wrap });
-    assert.equal(res.status, BLOCK, `ラッパー経由で素通りしている: ${wrap.slice(0, 40)}`);
+    assert.equal(res.outcome, REMIND, `ラッパー経由で素通りしている: ${wrap.slice(0, 40)}`);
   }
 });
 
 test('バイパス: pushd も cd と同じく対象リポの解決に使う', (t) => {
   const { repoA, repoB } = twoRepos(t);
   const res = runHook({ cwd: repoA, command: `pushd ${repoB} && ${PR_CMD} --fill` });
-  assert.equal(res.status, BLOCK, 'pushd が cd として認識されず cwd 側で判定されている');
+  assert.equal(res.outcome, REMIND, 'pushd が cd として認識されず cwd 側で判定されている');
 });
 
 test('バイパス: サブシェル (cd ... && ...) でも素通りしない', (t) => {
   const { repoA, repoB } = twoRepos(t);
   const res = runHook({ cwd: repoA, command: `(cd ${repoB} && ${PR_CMD} --fill)` });
-  assert.equal(res.status, BLOCK, 'サブシェル形の cd が拾えていない（区切り文字に ( が無い）');
+  assert.equal(res.outcome, REMIND, 'サブシェル形の cd が拾えていない（区切り文字に ( が無い）');
 });
 
-test('バイパス: ラッパー経由でも正当な ship は通る（過剰ブロックしない）', (t) => {
+test('バイパス: ラッパー経由でも正当な ship には注意書きが出ない', (t) => {
   const repo = makeRepo(t);
   git(repo, ['checkout', '-qb', 'feature/x']);
   writeMarker(repo, 'feature/x');
 
   const res = runHook({ cwd: repo, command: `bash -c "cd ${repo} && ${PR_CMD} --fill"` });
-  assert.equal(res.status, PASS, 'ラッパー対応が正当な ship まで巻き込んでブロックしている');
+  assert.equal(res.outcome, SILENT, 'ラッパー対応が正当な ship まで巻き込んで注意書きを出している');
 });
 
 // --- cd の構文バリエーション（実装はあるがテストが無かった分）---------------------
 
 test('cd の構文: 相対パス・cd -- を解決できる（~ 展開は下の別ケース）', (t) => {
+  // repoA は ship 済み、repoB は未経由。解決できれば repoB の注意書きが出る
+  // （解決できないと黙り、解決を取り違えて cwd を見ても黙るので、SILENT では判別できない）。
   const { repoA, repoB } = twoRepos(t);
-  writeMarker(repoB, 'feature/b');
 
   // repoA から見た repoB への相対パス（cwd 起点で解決される）
   const rel = path.relative(repoA, repoB);
-  assert.equal(
-    runHook({ cwd: repoA, command: `cd ${rel} && ${PR_CMD} --fill` }).status,
-    PASS,
-    '相対パスの cd が解決できていない',
-  );
+  const byRel = runHook({ cwd: repoA, command: `cd ${rel} && ${PR_CMD} --fill` });
+  assert.equal(byRel.outcome, REMIND, '相対パスの cd が解決できていない');
+  assert.ok(context(byRel).includes(repoB), '相対パスの解決先が repoB でない');
 
   // `cd -- <path>`（オプション終端）も正当な構文
-  assert.equal(
-    runHook({ cwd: repoA, command: `cd -- ${repoB} && ${PR_CMD} --fill` }).status,
-    PASS,
-    'cd -- が解決できず誤ブロックしている',
-  );
+  const byDash = runHook({ cwd: repoA, command: `cd -- ${repoB} && ${PR_CMD} --fill` });
+  assert.equal(byDash.outcome, REMIND, 'cd -- が解決できていない');
+  assert.ok(context(byDash).includes(repoB), 'cd -- の解決先が repoB でない');
 });
 
 test('#39: PR 作成より後ろの cd は対象リポの解決に使わない', (t) => {
@@ -370,7 +401,7 @@ test('#39: PR 作成より後ろの cd は対象リポの解決に使わない',
 
   // 実際に PR を作るのは repoA（cwd）。後続の cd は無関係。
   const res = runHook({ cwd: repoA, command: `${PR_CMD} --fill && cd ${repoB}` });
-  assert.equal(res.status, PASS, 'PR 作成より後ろの cd を対象リポにしている');
+  assert.equal(res.outcome, SILENT, 'PR 作成より後ろの cd を対象リポにしている');
 });
 
 // --- Issue #68: コマンドに書かれた「データ」を実行されるコマンドとして読まない -------
@@ -385,8 +416,7 @@ test('#39: PR 作成より後ろの cd は対象リポの解決に使わない',
 
 test('#68-1: PR 本文の自然文が移動先として解釈されない', (t) => {
   const repo = makeRepo(t);
-  const wt = addWorktree(repo, 'feat-x', 'feature/x');
-  writeMarker(wt, 'feature/x');
+  const wt = addWorktree(repo, 'feat-x', 'feature/x'); // 未経由。正しく解決できれば注意書きが出る
 
   // 本文に「移動コマンドの2文字 + 空白 + 日本語」が入っている。
   // 実際に出た文面は「hook の cd 候補収集を消す」だった。
@@ -398,7 +428,9 @@ test('#68-1: PR 本文の自然文が移動先として解釈されない', (t) 
     command: `BODY="${body}" && ${PR_CMD} --title t --body "$BODY"`,
   });
 
-  assert.strictEqual(r.status, PASS, `本文のテキストで誤ブロックした\n${r.stderr}`);
+  // 本文を移動先と取り違えると解決失敗で黙る。SILENT と区別するため、正しい解決を注意書きで確かめる。
+  assert.strictEqual(r.outcome, REMIND, `本文のテキストを移動先として拾った\n${r.stdout}`);
+  assert.ok(context(r).includes(wt), '注意書きの対象が cwd の worktree になっていない');
 });
 
 test('#68-2: 別コマンドのヒアドキュメントに PR 作成コマンドが書かれていても発火しない', (t) => {
@@ -414,29 +446,29 @@ test('#68-2: 別コマンドのヒアドキュメントに PR 作成コマンド
   ].join('\n');
 
   const r = runHook({ cwd: repo, command });
-  assert.strictEqual(r.status, PASS, `ヒアドキュメントの本文で発火した\n${r.stderr}`);
+  assert.strictEqual(r.outcome, SILENT, `ヒアドキュメントの本文で発火した\n${r.stdout}`);
 });
 
-test('#68-3: 本物の移動つき PR 作成は引き続きブロックされる', (t) => {
+test('#68-3: 本物の移動つき PR 作成は引き続き移動先で判定される', (t) => {
   const repo = makeRepo(t);
   const other = makeRepo(t);
   // マーカーは cwd 側にだけある。移動先のリポジトリには無い
   writeMarker(repo, 'main');
 
   const r = runHook({ cwd: repo, command: `cd ${other} && ${PR_CMD} --title t` });
-  assert.strictEqual(r.status, BLOCK, '移動先のリポジトリで判定していない');
+  assert.strictEqual(r.outcome, REMIND, '移動先のリポジトリで判定していない');
 });
 
-test('#68-4: ラッパー経由の PR 作成は引き続きブロックされる', (t) => {
+test('#68-4: ラッパー経由の PR 作成は引き続き中身まで判定される', (t) => {
   const repo = makeRepo(t);
   const other = makeRepo(t);
   writeMarker(repo, 'main');
 
   const r = runHook({ cwd: repo, command: `bash -c "cd ${other} && ${PR_CMD} --title t"` });
-  assert.strictEqual(r.status, BLOCK, 'ラッパーの中身が検査対象から外れている');
+  assert.strictEqual(r.outcome, REMIND, 'ラッパーの中身が検査対象から外れている');
 });
 
-test('#68-5: ヒアドキュメントをシェルに食わせる形はブロックされる', (t) => {
+test('#68-5: ヒアドキュメントをシェルに食わせる形も中身まで判定される', (t) => {
   const repo = makeRepo(t);
   const other = makeRepo(t);
   writeMarker(repo, 'main');
@@ -445,7 +477,7 @@ test('#68-5: ヒアドキュメントをシェルに食わせる形はブロッ�
   const command = ["bash <<'EOF'", `cd ${other}`, `${PR_CMD} --title t`, 'EOF'].join('\n');
 
   const r = runHook({ cwd: repo, command });
-  assert.strictEqual(r.status, BLOCK, 'シェルに渡すヒアドキュメントを素通りさせた');
+  assert.strictEqual(r.outcome, REMIND, 'シェルに渡すヒアドキュメントを素通りさせた');
 });
 
 test('#68-6: 本文の自然文を落としても、移動先の指定は拾う', (t) => {
@@ -461,19 +493,17 @@ test('#68-6: 本文の自然文を落としても、移動先の指定は拾う'
     command: `cd ${other} && BODY="${body}" && ${PR_CMD} --title t --body "$BODY"`,
   });
 
-  assert.strictEqual(r.status, BLOCK, '本文ごと移動先まで落としている');
-  assert.match(r.stderr, new RegExp(other.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
-    '解決した移動先が実際の移動先になっていない');
+  assert.strictEqual(r.outcome, REMIND, '本文ごと移動先まで落としている');
+  assert.ok(context(r).includes(other), '解決した移動先が実際の移動先になっていない');
 });
 
 test('#68-7: ヒアドキュメントで本文ファイルを作ってから PR を作れる', (t) => {
   const repo = makeRepo(t);
-  const wt = addWorktree(repo, 'feat-y', 'feature/y');
-  writeMarker(wt, 'feature/y');
+  const wt = addWorktree(repo, 'feat-y', 'feature/y'); // 未経由
 
   // 本文に「行頭が移動コマンド」の手順が書かれている。行頭はコマンドの位置なので、
   // ヒアドキュメントの本体を落としていないと、これが移動先として採用される。
-  // 移動先は実在しないので fail-closed 側に倒れ、正当な PR 作成がブロックされる。
+  // 移動先は実在しないので解決に失敗して黙り、cwd の worktree への注意書きが消える。
   const command = [
     "cat > /tmp/body.md <<'EOF'",
     '## 再現手順',
@@ -483,13 +513,13 @@ test('#68-7: ヒアドキュメントで本文ファイルを作ってから PR 
   ].join('\n');
 
   const r = runHook({ cwd: wt, command });
-  assert.strictEqual(r.status, PASS, `本文ファイルの中身を移動先として拾った\n${r.stderr}`);
+  assert.strictEqual(r.outcome, REMIND, `本文ファイルの中身を移動先として拾った\n${r.stdout}`);
+  assert.ok(context(r).includes(wt), '注意書きの対象が cwd の worktree になっていない');
 });
 
 test('#68-8: 複数行にまたがる本文の行頭が移動先として解釈されない', (t) => {
   const repo = makeRepo(t);
-  const wt = addWorktree(repo, 'feat-z', 'feature/z');
-  writeMarker(wt, 'feature/z');
+  const wt = addWorktree(repo, 'feat-z', 'feature/z'); // 未経由
 
   // `--body` の値が実際の改行を含み、その行の1つが行頭から移動コマンドで始まる。
   // 切り出しが行単位だと PR 作成コマンドより後ろの行が残り、行頭は
@@ -497,7 +527,8 @@ test('#68-8: 複数行にまたがる本文の行頭が移動先として解釈�
   const body = ['line1', 'cd /nonexistent-xyz', 'line3'].join('\n');
   const r = runHook({ cwd: wt, command: `${PR_CMD} --title t --body "${body}"` });
 
-  assert.strictEqual(r.status, PASS, `複数行の本文で誤ブロックした\n${r.stderr}`);
+  assert.strictEqual(r.outcome, REMIND, `複数行の本文の行頭を移動先として拾った\n${r.stdout}`);
+  assert.ok(context(r).includes(wt), '注意書きの対象が cwd の worktree になっていない');
 });
 
 test('#68-9: 複数行でも、PR 作成コマンドより前の移動先は拾う', (t) => {
@@ -509,21 +540,20 @@ test('#68-9: 複数行でも、PR 作成コマンドより前の移動先は拾�
   const command = [`cd ${other}`, 'echo 準備', `${PR_CMD} --title t`].join('\n');
   const r = runHook({ cwd: repo, command });
 
-  assert.strictEqual(r.status, BLOCK, '複数行の本物の移動を見落とした');
+  assert.strictEqual(r.outcome, REMIND, '複数行の本物の移動を見落とした');
 });
 
-test('#68-10: 移動先を解決できないとき、案内が原因の候補を示す', (t) => {
+test('#68-10: 移動先を解決できないとき、ブロックも注意書きもしない', (t) => {
   const repo = makeRepo(t);
   writeMarker(repo, 'main');
 
   // 変数は展開できないので必ず解決に失敗する。実際にこのセッションで踏んだ形。
-  // 案内が「対象リポジトリに移動して再実行」だけだと、移動しても結果は変わらないので
-  // 読み手が同じ操作を繰り返すことになる（#67 と同系統）。
+  // 以前はここで exit 2 でブロックし、案内で回避策（絶対パス・--body-file）を示していた。
+  // ブロックをやめたので、原因を利用者に直させる必要がなくなり、黙って通すのが正しい。
   const r = runHook({ cwd: repo, command: 'cd $OTHER && ' + PR_CMD });
 
-  assert.strictEqual(r.status, BLOCK);
-  assert.match(r.stderr, /\$VAR/, '変数を展開できないことを案内していない');
-  assert.match(r.stderr, /body-file/, '本文が原因の場合の回避策を案内していない');
+  assert.strictEqual(r.status, 0, '移動先を解決できないだけで PR 作成が止められている');
+  assert.strictEqual(r.outcome, SILENT);
 });
 
 // --- 区切りを絞ったことで開いた穴（セルフレビューの Code-Reviewer が実測で検出）-----
@@ -544,7 +574,7 @@ test('#68-11: シェルのキーワードの直後の移動も拾う', (t) => {
   ];
   for (const command of shapes) {
     const r = runHook({ cwd: repo, command });
-    assert.strictEqual(r.status, BLOCK, `キーワードの直後の移動を見落とした: ${command}`);
+    assert.strictEqual(r.outcome, REMIND, `キーワードの直後の移動を見落とした: ${command}`);
   }
 });
 
@@ -558,7 +588,7 @@ test('#68-12: クォートの中の << はヒアドキュメントの開始で�
   const command = ['echo "docs<<EOF"', `cd ${other}`, PR_CMD].join('\n');
   const r = runHook({ cwd: repo, command });
 
-  assert.strictEqual(r.status, BLOCK, 'クォート内の << をヒアドキュメントと誤認した');
+  assert.strictEqual(r.outcome, REMIND, 'クォート内の << をヒアドキュメントと誤認した');
 });
 
 test('#68-13: ヒアドキュメントの終端はインデントの扱いを区別する', (t) => {
@@ -578,7 +608,7 @@ test('#68-13: ヒアドキュメントの終端はインデントの扱いを区
   ].join('\n');
   const r = runHook({ cwd: repo, command });
 
-  assert.strictEqual(r.status, PASS, 'インデントされた終端で本体を打ち切っている');
+  assert.strictEqual(r.outcome, SILENT, 'インデントされた終端で本体を打ち切っている');
 });
 
 test('#68-14: command / builtin 経由の移動も拾う', (t) => {
@@ -591,6 +621,173 @@ test('#68-14: command / builtin 経由の移動も拾う', (t) => {
   // （旧版はブロックしていた。別モデル視点のレビューが弱点として挙げ、実測で確認した）。
   for (const prefix of ['command', 'builtin']) {
     const r = runHook({ cwd: repo, command: `${prefix} cd ${other} && ${PR_CMD}` });
-    assert.strictEqual(r.status, BLOCK, `${prefix} 経由の移動を見落とした`);
+    assert.strictEqual(r.outcome, REMIND, `${prefix} 経由の移動を見落とした`);
   }
+});
+
+// --- Issue #64: PR 作成は止めない ------------------------------------------------
+
+test('#64: PR 作成は、どの状態でも exit 2 でブロックされない', (t) => {
+  // 今までブロックしていた全パターンを並べ、「止めない」を不変条件として固定する。
+  const repo = makeRepo(t);
+  const other = makeRepo(t);
+  const wt = addWorktree(repo, 'issue-64', 'fix/issue-64');
+  writeMarker(repo, 'main');
+
+  const commands = [
+    [repo, PR_CMD],
+    [repo, `cd ${other} && ${PR_CMD} --fill`],
+    [repo, `bash -c "cd ${other} && ${PR_CMD} --fill"`],
+    [repo, `cd ${wt} && ${PR_CMD} --fill`],
+    [repo, `cd /nonexistent/xyz && ${PR_CMD}`],
+    [repo, `cd $OTHER && ${PR_CMD}`],
+    [mkdtemp(t), PR_CMD],
+  ];
+  for (const [cwd, command] of commands) {
+    const r = runHook({ cwd, command });
+    assert.equal(r.status, 0, `PR 作成が止められている: ${command}\n${r.stderr}`);
+    assert.ok(!r.stdout.includes('permissionDecision'), `PR 作成に権限判定が付いた: ${command}`);
+  }
+});
+
+test('#64: 注意書きは dev-ship 経由（マーカー一致）で消える', (t) => {
+  const repo = makeRepo(t);
+  git(repo, ['checkout', '-qb', 'feature/x']);
+  assert.equal(runHook({ cwd: repo, command: PR_CMD }).outcome, REMIND);
+  writeMarker(repo, 'feature/x');
+  assert.equal(runHook({ cwd: repo, command: PR_CMD }).outcome, SILENT);
+});
+
+// --- Issue #64: PR マージは常に承認確認 ------------------------------------------
+
+const MERGE_CMD = ['gh', 'pr', 'merge'].join(' ');
+
+function askReason(res) {
+  const out = JSON.parse(res.stdout).hookSpecificOutput;
+  assert.equal(out.hookEventName, 'PreToolUse');
+  assert.equal(out.permissionDecision, 'ask');
+  assert.match(out.permissionDecisionReason, /承認/);
+  return out.permissionDecisionReason;
+}
+
+test('#64: gh pr merge は承認確認になる（オプション・起動の形によらない）', (t) => {
+  const repo = makeRepo(t);
+  const other = makeRepo(t);
+  for (const command of [
+    MERGE_CMD,
+    `${MERGE_CMD} 12`,
+    `${MERGE_CMD} 12 --squash`,
+    `${MERGE_CMD} 12 --rebase --delete-branch`,
+    `${MERGE_CMD} 12 --merge`,
+    `${MERGE_CMD} 12 --auto --squash`,
+    `${MERGE_CMD} https://github.com/o/r/pull/12`,
+    `/usr/bin/gh pr merge 12`,
+    `GH_REPO=o/r ${MERGE_CMD} 12`,
+    `cd ${other} && ${MERGE_CMD} 12`,
+    `git push origin HEAD && ${MERGE_CMD} 12`,
+    `bash -c "${MERGE_CMD} 12"`,
+    `sh -c '${MERGE_CMD} 12'`,
+    `eval "${MERGE_CMD} 12"`,
+    ['bash <<\'EOF\'', MERGE_CMD + ' 12', 'EOF'].join('\n'),
+  ]) {
+    const r = runHook({ cwd: repo, command });
+    assert.equal(r.outcome, ASK, `承認確認が出ない: ${command}`);
+    askReason(r);
+  }
+});
+
+test('#64: マージ API / GraphQL も承認確認になる（gh pr merge の迂回路）', (t) => {
+  const repo = makeRepo(t);
+  for (const command of [
+    'gh api -X PUT repos/o/r/pulls/12/merge',
+    'gh api --method PUT repos/o/r/pulls/12/merge -f merge_method=squash',
+    // 引用符で URL を囲む書き方。クォート除去済みの文字列だけを見ていると URL ごと消えて素通りする。
+    'gh api --method PUT "repos/o/r/pulls/12/merge" -f merge_method=squash',
+    "gh api -X PUT 'repos/o/r/pulls/12/merge'",
+    'curl -X PUT -H "Authorization: token $T" https://api.github.com/repos/o/r/pulls/12/merge',
+    'gh api graphql -f query=\'mutation { mergePullRequest(input:{pullRequestId:"x"}) { clientMutationId } }\'',
+    'gh api graphql -f query=\'mutation { enablePullRequestAutoMerge(input:{pullRequestId:"x"}) { clientMutationId } }\'',
+    `bash -c "gh api -X PUT repos/o/r/pulls/12/merge"`,
+  ]) {
+    const r = runHook({ cwd: repo, command });
+    assert.equal(r.outcome, ASK, `承認確認が出ない: ${command}`);
+  }
+});
+
+test('#64: マージの承認確認は dev-ship のマーカーでは解除されない', (t) => {
+  // マーカーは dev-ship / auto-build が自分で書く。これで解除できると skill の書き込みが承認になる。
+  const repo = makeRepo(t);
+  git(repo, ['checkout', '-qb', 'feature/x']);
+  writeMarker(repo, 'feature/x');
+  assert.equal(runHook({ cwd: repo, command: `${MERGE_CMD} 12` }).outcome, ASK);
+  // 旧マーカー（.agent 配下）も同様
+  fs.writeFileSync(path.join(repo, '.agent', '.dev-ship-active'), 'feature/x\n');
+  assert.equal(runHook({ cwd: repo, command: `${MERGE_CMD} 12` }).outcome, ASK);
+});
+
+test('#64: マージの承認確認は .agent/ の有無・git 管理下かどうかに依らない', (t) => {
+  const noAgent = makeRepo(t, { agent: false });
+  assert.equal(runHook({ cwd: noAgent, command: `${MERGE_CMD} 12` }).outcome, ASK);
+  assert.equal(runHook({ cwd: mkdtemp(t), command: `${MERGE_CMD} 12` }).outcome, ASK);
+});
+
+test('#64: MCP の merge_pull_request も承認確認になる（クラウドは gh が無く MCP で操作する）', (t) => {
+  const r = withOutcome(
+    spawnSync('bash', [HOOK], {
+      input: JSON.stringify({ cwd: mkdtemp(t), tool_name: 'mcp__github__merge_pull_request', tool_input: { pullNumber: 12 } }),
+      encoding: 'utf8',
+      env: GIT_ENV,
+    }),
+  );
+  assert.equal(r.outcome, ASK);
+  askReason(r);
+});
+
+test('#64: マージ以外は承認確認にならない（過剰確認の防止）', (t) => {
+  const repo = makeRepo(t);
+  writeMarker(repo, 'main');
+  for (const command of [
+    'gh pr view 12',
+    'gh pr list --state merged',
+    'gh pr checks 12',
+    'gh pr create --fill', // PR 作成は止めない（マーカー一致なので注意書きも出ない）
+    'git merge feature/x', // ローカルの git merge は PR のマージではないので対象外
+    'git status',
+    // コミットメッセージ・Issue 本文に書かれた文字列
+    `git commit -m "${MERGE_CMD} は呼ばない"`,
+    `git commit -m '${MERGE_CMD} は呼ばない'`,
+    ['gh issue create --title t --body-file - <<\'EOF\'', `手順: ${MERGE_CMD} 12`, 'gh api -X PUT repos/o/r/pulls/12/merge', 'EOF'].join('\n'),
+  ]) {
+    const r = runHook({ cwd: repo, command });
+    assert.notEqual(r.outcome, ASK, `過剰に承認確認が出ている: ${command}`);
+  }
+  assert.equal(
+    runHook({ cwd: mkdtemp(t), tool: 'mcp__github__create_pull_request', command: '' }).outcome,
+    SILENT,
+    'MCP の PR 作成が承認確認になっている',
+  );
+});
+
+test('#64: 引用符の中のマージ API の URL でも確認が出る（見落としより過剰確認を選ぶ）', (t) => {
+  // クォート内の文字列は通常は無視するが、API の URL は引用符で囲んで渡す書き方があり、
+  // 無視すると承認なしのマージが通る。代償として、コミットメッセージに URL を書いても確認が出る。
+  const repo = makeRepo(t);
+  const r = runHook({ cwd: repo, command: 'git commit -m "repos/o/r/pulls/12/merge を叩く"' });
+  assert.equal(r.outcome, ASK);
+});
+
+// --- 登録（hooks.json）------------------------------------------------------------
+// フック本体が正しくても、登録されていなければ一度も発火しない。exit 0 と区別できない失敗。
+
+test('#64: hooks.json が Bash と MCP のマージ用 matcher でこのフックを登録している', () => {
+  const hooks = JSON.parse(fs.readFileSync(path.join(__dirname, 'hooks.json'), 'utf8')).hooks.PreToolUse;
+  const registered = (toolName) =>
+    hooks.some(
+      (h) =>
+        new RegExp(`^(?:${h.matcher})$`).test(toolName) &&
+        h.hooks.some((c) => c.command.includes('pre-pr-guard.sh')),
+    );
+  assert.ok(registered('Bash'), 'Bash でこのフックが発火しない');
+  assert.ok(registered('mcp__github__merge_pull_request'), 'MCP のマージでこのフックが発火しない');
+  assert.ok(!registered('mcp__github__create_pull_request'), 'MCP の PR 作成まで巻き込んでいる');
 });

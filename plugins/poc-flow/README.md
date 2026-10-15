@@ -42,7 +42,7 @@ PoC（試作・実現性検証）専用の軽量開発フロー。**品質ゲー
 
 ## 禁止事項
 
-1. **`.agent/` を作らない。** `dev-flow` の `pre-pr-guard` hook は `REPO_ROOT/.agent/` の存在をスコープガードにしており、これができた瞬間に `/dev-ship` 非経由の `gh pr create` が **exit 2 で恒久的にブロック**される。とくに `hub-run-add.mjs` は `<repo>/.agent/hub-runs/` に書くため**呼んではならない**（dev-hub 連携を失う実害はほぼない。動画・スクショは `~/` 配下の無条件スキャンでインボックスに載る）
+1. **`.agent/` を作らない。** `dev-flow` の `pre-pr-guard` hook は `REPO_ROOT/.agent/` の存在をスコープガードにしており、これができた瞬間に `/dev-ship` 非経由の `gh pr create` のたびに「成果物が未生成かもしれない」という注意書きが出続ける（PR 作成自体は止まらない）。とくに `hub-run-add.mjs` は `<repo>/.agent/hub-runs/` に書くため**呼んではならない**（dev-hub 連携を失う実害はほぼない。動画・スクショは `~/` 配下の無条件スキャンでインボックスに載る）
 2. **`.env` を Write / Edit ツールで書かない。** `pre-edit-protect` hook が全リポでブロックする。`.env.example` を書いて `cp` で複製する
 3. **`[dev-flow]` のスキル起動サジェストを無視する。** `suggest-dev-skill.sh` は全リポで発火しマーカーで沈黙させられないので、poc 系スキルは `/poc-*` のスラッシュ起動に統一して回避する
 4. **`ALLOW_SECRETS=1` で `git-secret-guard` を回避しない。** 止まったら差分を目視確認してユーザーに判断を仰ぐ

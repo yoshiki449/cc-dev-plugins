@@ -45,7 +45,7 @@ overlay の有無にかかわらず、PR 作成前に次の1点は必ず確認�
    case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$REPO_ROOT/$GIT_COMMON" ;; esac
    git -C "$REPO_ROOT" branch --show-current > "$GIT_COMMON/dev-ship-active"
    ```
-   - dev-flow の PreToolUse hook（`pre-pr-guard.sh`）は、このマーカーが**対象リポの**現ブランチ名と一致しない PR 作成をブロックする（成果物欠落の最終防衛線）。dev-ship 経由の PR 作成はこのマーカーで素通しになる
+   - dev-flow の PreToolUse hook（`pre-pr-guard.sh`）は、このマーカーが**対象リポの**現ブランチ名と一致しない PR 作成に「成果物（explain-diff / hub-run）が未生成かもしれない」という注意書きを出す（PR 作成自体は止めない）。dev-ship 経由の PR 作成はこのマーカーで注意書きが出ない。マーカーはマージの承認の代わりにはならない（`gh pr merge` とマージ API は、マーカーの有無に依らず毎回利用者に承認を求める）
    - ⚠ **相対パスで書かない。** `.agent/` は保管規約で gitignore されるため worktree にはチェックアウトされず、`git branch --show-current > .agent/.dev-ship-active` を cwd 依存で実行すると **main clone に `main` と書かれたマーカーが残ってガードが恒久的に無効化される**。マーカーは `.git` 実体（`--git-common-dir`）配下に置くことで worktree と main clone で同じ1つになる
 
 ### E0.5. ゲート判定（変更規模 × リスク）

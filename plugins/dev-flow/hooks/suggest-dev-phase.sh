@@ -9,7 +9,7 @@
 # - フェーズマーカー .agent/.dev-flow-active（中身=ブランチ名、各フェーズスキルが開始時に書く）
 #   または ship マーカー（.git 実体の下の dev-ship-active）があれば沈黙
 # - 同一セッション×同一カテゴリの案内は1回のみ（.agent/.dev-flow-suggest-mute）
-# - 強制はしない。成果物欠落の決定的ガードは pre-pr-guard.sh（gh pr create の一点）が担う
+# - 強制はしない。成果物欠落の注意書きは pre-pr-guard.sh（gh pr create の一点）が出す
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 SID=$(echo "$INPUT" | jq -r '.session_id // "unknown"')

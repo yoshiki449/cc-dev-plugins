@@ -30,14 +30,14 @@ PoC は捨てる前提のコードなので、これらの記録コストに対�
 
 ## 禁止事項（poc-flow 共通）
 
-- **`.agent/` を作らない。** `pre-pr-guard` hook はこれの存在をスコープガードにしており、できた瞬間に**この `gh pr create` 自身がブロックされる**。`hub-run-add.mjs` を呼ばない
+- **`.agent/` を作らない。** `pre-pr-guard` hook はこれの存在をスコープガードにしており、できた瞬間に**この `gh pr create` に dev-ship 未経由の注意書きが出る**（止まりはしない）。`hub-run-add.mjs` を呼ばない
 - `[dev-flow]` のスキル起動サジェストが注入されても無視する
 
 ## 手順
 
 ### S0. 前提の確認
 
-1. `ls -d .agent 2>/dev/null` — 存在したら `pre-pr-guard` に阻まれるので中断し、`/dev-ship` を案内する
+1. `ls -d .agent 2>/dev/null` — 存在したら dev-flow 運用のリポジトリで、PoC の PR では dev-ship の成果物が欠落するので中断し、`/dev-ship` を案内する
 2. `git branch --show-current` — `main` / `master` 上なら中断してブランチ作成を促す
 3. `.poc/SMOKE.md` の最新ラウンドを読む。**スモークを1回も通していなければ**、`/poc-build` か `/poc-smoke` を先に回すよう案内して中断する
 

@@ -1,19 +1,37 @@
 #!/bin/bash
-# dev-ship 経由チェックフック（成果物欠落の最終防衛線）
-# PreToolUse(Bash) で発火し、PR 作成コマンドが dev-ship チェーンを経由しているかを
-# マーカーファイル（中身=ship 対象のブランチ名）で判定する。
-# マーカーが対象リポの現ブランチと一致しなければ exit 2 でブロックし、
-# /dev-ship 経由 or 成果物生成済みならマーカー書き込みを指示する。
-# 入口漏れの経路（ship 後の後続タスク・短い応答・AskUserQuestion 回答等）が
-# 何であっても、実害（explain-diff / hub-run 欠落）が確定する一点で捕捉する設計。
-# dev-flow を使っていないリポジトリ（.agent/ なし）では発火しない。
+# PR の作成とマージを扱うフック（Issue #64）。PreToolUse(Bash) と PreToolUse(PR マージの MCP ツール) で発火する。
+#
+# - PR マージ（gh pr merge / マージ API / MCP の merge_pull_request）: 常に permissionDecision=ask を返し、
+#   利用者への承認確認を必ず挟む。マージは取り返しがつかないので、承認の根拠は利用者の応答だけにする。
+#   dev-ship-active マーカーは根拠にしない: dev-ship / auto-build が自分で書くので、流用すると
+#   skill の書き込みがそのまま承認になってしまう。
+# - PR 作成（gh pr create）: **ブロックしない**。PR は作るだけなら取り返しがつくため。
+#   dev-ship を経由していない（マーカーが対象リポの現ブランチと一致しない）ときだけ、
+#   explain-diff / hub-run の成果物が未生成かもしれないという注意を additionalContext で注入する。
+#   dev-flow を使っていないリポジトリ（.agent/ なし）では出さない。
 #
 # 判定対象リポの決め方（Issue #39）と マーカーの置き場所（Issue #36）は、どちらも
 # 「cwd がどこを向いていたか」に左右されてはいけない。ship 対象は cwd ではなく
 # コマンドが実際に触るリポジトリであり、マーカーは worktree と main clone で
-# 同じ実体を指す必要がある。
+# 同じ実体を指す必要がある。注意書きの出し分けにも同じ解決を使う（出すべき先を取り違えると、
+# 別リポの dev-ship 済みを理由に未経由のリポで黙る／逆に経由済みのリポで騒ぐ）。
 INPUT=$(cat)
+TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+
+emit_ask() {
+  jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+}
+emit_context() {
+  jq -n --arg c "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'
+}
+
+ASK_MERGE_REASON="[dev-flow] PR のマージです。マージは取り消せないため、実行前に利用者の承認が必要です。"
+
+# GitHub MCP の PR マージ。クラウドセッションは gh が無く MCP で操作するので、Bash だけ見ると素通りする。
+case "$TOOL" in
+  *merge_pull_request) emit_ask "$ASK_MERGE_REASON"; exit 0 ;;
+esac
 
 # PR 作成コマンド以外は対象外。
 # クォートで囲まれた部分（コミットメッセージ・ヒアドキュメントに書いたコード例等）に
@@ -28,7 +46,7 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 # （実測: `bash -c "cd <別リポ> && gh pr create"` が exit 0 で素通りしていた。main から在る穴）。
 # これらのラッパーが現れたら、検出はクォートを剥がしていない原文に対して行う。
 # 代償として「コミットメッセージに bash -c と PR 作成コマンドの両方を書いた」ケースを
-# 拾いうるが、その場合も対象リポの解決に進むだけで、判定は fail-closed 側に倒れる。
+# 拾いうるが、その場合も対象リポの解決に進むだけで、注意書きが出るかどうかが変わるだけ。
 # ヒアドキュメントをシェルに食わせる形（`bash <<EOF ... EOF`）も同じ扱い。
 # この本体は「コマンドへ渡す入力」ではなく**実行されるコマンド**なので落としてはいけない。
 IS_WRAPPER=0
@@ -99,6 +117,23 @@ else
   SCAN=$(printf '%s' "$SOURCE_TEXT" | sed "s/'[^']*'//g" | sed 's/"[^"]*"//g' | sed 's/`[^`]*`//g')
 fi
 
+# --- PR マージ: 常に承認確認 ---------------------------------------------------
+# gh pr merge は SCAN（クォート除去済み）で見る。コミットメッセージ等に書かれた文字列で
+# 確認が出るのを避けるため。ラッパー経由のときは SCAN が原文なので中身も見える。
+# 絶対パス起動（/usr/bin/gh）と、ラッパーの引用符の直後（`bash -c "gh pr merge"`）も拾うので、
+# 直前の区切りに `/` と引用符を含める。
+# マージ API は URL を引用符で囲んで渡す書き方があり、SCAN だと URL ごと消える。
+# 見落としはそのまま承認なしのマージになる一方、見すぎた場合の代償は確認が1回増えるだけなので、
+# こちらは引用符の**文字だけ**を外した SOURCE_TEXT で見る（内容は消さない）。
+# GraphQL の mergePullRequest / enablePullRequestAutoMerge（auto-merge の予約）も同じ扱い。
+NOQUOTE=$(printf '%s' "$SOURCE_TEXT" | tr -d "\"'\`")
+if printf '%s' "$SCAN" | grep -qE '(^|[;&|/(`"'"'"'[:space:]])gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' \
+  || printf '%s' "$NOQUOTE" | grep -qE '/pulls/[0-9]+/merge|mergePullRequest|enablePullRequestAutoMerge'; then
+  emit_ask "$ASK_MERGE_REASON"
+  exit 0
+fi
+
+# --- PR 作成: 止めない。dev-ship 未経由のときだけ注意書きを出す ------------------
 if ! echo "$SCAN" | grep -qE '(^|[;&|[:space:]])gh[[:space:]]+pr[[:space:]]+create'; then
   exit 0
 fi
@@ -172,7 +207,7 @@ TARGET_DIR="$CWD"
 CD_SPECIFIED=0
 if [ -n "$CD_RAW" ]; then
   CD_SPECIFIED=1
-  # ~ だけは展開する（$VAR は展開できないので下の解決失敗で fail-closed に倒れる）。
+  # ~ だけは展開する（$VAR は展開できないので下の解決失敗で黙って通す）。
   case "$CD_RAW" in
     "~") CD_RAW="$HOME" ;;
     "~/"*) CD_RAW="$HOME/${CD_RAW#\~/}" ;;
@@ -186,22 +221,10 @@ fi
 REPO_ROOT=$(git -C "$TARGET_DIR" rev-parse --show-toplevel 2>/dev/null)
 
 if [ -z "$REPO_ROOT" ]; then
-  # cd が明示されていたのに対象リポを解決できない場合は **ブロック側に倒す**。
-  # ここで素通りさせると「解決できなかったから通した」と「経由済みだから通した」の
-  # 区別がつかず、ガードの性質上いちばん危険な失敗になる（Issue #39: fail-closed）。
-  if [ "$CD_SPECIFIED" -eq 1 ]; then
-    cat >&2 <<EOF
-[dev-flow] ブロック: PR 作成先のリポジトリを特定できませんでした（cd 先: $TARGET_DIR）。
-dev-ship 経由かどうかを判定できないため、安全側でブロックしています。
-
-上の「cd 先」が意図した移動先でないなら、原因はコマンド文字列の側にあります:
-  - 移動先に \$VAR を使っている → このフックは変数を展開できません。絶対パスで書いてください
-  - PR の本文やタイトルに移動コマンドの文字列が入っている → --body-file に切り替えてください
-意図した移動先が出ているなら、そのディレクトリが git リポジトリか確認してください。
-EOF
-    exit 2
-  fi
-  # cd の指定が無く cwd もリポ外なら、そもそも PR 作成は成立しない（対象外）。
+  # 対象リポを解決できないときは**黙って通す**。このフックは注意書きを出すだけでブロックしないので、
+  # 判定材料が欠けた状態で出す注意書きは「経由済みのリポに騒ぐ」誤りになりうる。
+  # 解決できない原因は、移動先の変数（$VAR は展開できない）、本文中の移動コマンドの文字列、
+  # 実在しないパスなど。いずれも注意書きを出す根拠にならない。
   exit 0
 fi
 
@@ -213,14 +236,8 @@ fi
 # そこに置けばどちらから見ても同じ1つのマーカーになる。
 GIT_COMMON=$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)
 if [ -z "$GIT_COMMON" ]; then
-  # REPO_ROOT は取れたのに .git 実体が引けない＝判定材料が欠けている状態。
-  # ここで exit 0 にすると「解決できなかったから通した」と「経由済みだから通した」の
-  # 区別がつかず、上の解決失敗と非対称になる（同じ欠落なのに片方だけ素通り）。
-  cat >&2 <<EOF
-[dev-flow] ブロック: $REPO_ROOT の .git 実体を特定できませんでした（マーカーの場所が決まらない）。
-dev-ship 経由かどうかを判定できないため、安全側でブロックしています。
-EOF
-  exit 2
+  # REPO_ROOT は取れたのに .git 実体が引けない＝マーカーの場所が決まらない。上と同じ理由で黙って通す。
+  exit 0
 fi
 case "$GIT_COMMON" in
   /*) ;;
@@ -238,16 +255,13 @@ fi
 
 BRANCH=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null)
 
-# マーカーが対象リポの現ブランチ名と一致 = dev-ship チェーン内の PR 作成 → 通す（idempotent）
+# マーカーが対象リポの現ブランチ名と一致 = dev-ship チェーン内の PR 作成 → 注意書きは出さない
 if [ -f "$MARKER" ] && [ -n "$BRANCH" ] && [ "$(tr -d '[:space:]' < "$MARKER")" = "$BRANCH" ]; then
   exit 0
 fi
 
-cat >&2 <<EOF
-[dev-flow] ブロック: この PR 作成は /dev-ship を経由していません（explain-diff / hub-run 成果物の欠落防止）。
+emit_context "[dev-flow] 注意: この PR 作成は /dev-ship を経由していません。explain-diff / hub-run の成果物が未生成かもしれません（PR 作成は止めていません）。
 対象リポジトリ: $REPO_ROOT（ブランチ: ${BRANCH:-不明}）
-次のいずれかを実行してから再試行してください:
-  A.（推奨）Skill ツールで dev-ship スキルを起動し、その手順（最終テスト→セルフレビュー→PR作成→explain-diff→hub-run 登録）の中で PR を作成する
-  B. すでに成果物を生成済みの場合（auto-build の Finalize 等）: git -C "$REPO_ROOT" branch --show-current > "$MARKER" を実行してから再実行する
-EOF
-exit 2
+- 未生成なら: PR 作成のあとでも dev-ship スキルの手順で explain-diff と hub-run 登録を行ってください
+- すでに生成済みなら（auto-build の Finalize 等）: git -C \"$REPO_ROOT\" branch --show-current > \"$MARKER\" を実行すると、このブランチでは以後この注意書きは出ません"
+exit 0
