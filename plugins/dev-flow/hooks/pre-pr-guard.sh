@@ -144,6 +144,16 @@ GH_TOK='(gh|[^[:space:]]*\$[^[:space:]]*)'
 # gh pr create --body "... merge ..." のような作成コマンドは、create がフラグではないので当たらない。
 PR_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
 GH_PR_MERGE="(^|[^[:alnum:]_-])${GH_TOK}[[:space:]]+pr${PR_FLAGS}[[:space:]]+merge${TERM_END}"
+# 展開が語の途中に入る形（`gh${IFS:0:1}pr` `gh$'\t'pr` `gh$(printf " ")pr` `gh p${Z}r merge`）は、
+# 展開の結果が空白なのか空なのかを実行前に決められない。そこで展開（${..} $(..) $'..' $NAME `..`）を
+# 1 文字の目印に置き換え、目印・空白・引用符・バックスラッシュをすべて詰めたうえで
+# `ghprmerge` が現れるかを見る。展開が何を返しても `gh pr merge` になりうる形を、まとめて拾える。
+# 詰めるので `gh prmerge` のような実在しない綴りも当たるが、確認が1回増えるだけ。
+MARK=$(printf '\001')
+# 二重引用符で書くと `$[` が算術展開として解釈される（実測）。単一引用符で書き、目印だけ差し込む。
+SED_EXPANSIONS='s/\$\{[^}]*\}/@M@/g; s/\$\([^)]*\)/@M@/g; s/\$'"'"'[^'"'"']*'"'"'/@M@/g; s/`[^`]*`/@M@/g; s/\$[A-Za-z_][A-Za-z0-9_]*/@M@/g; s/\$[0-9@*#?!-]/@M@/g'
+SED_EXPANSIONS=${SED_EXPANSIONS//@M@/$MARK}
+SQUASHED=$(printf '%s' "$COMMAND" | sed -E "$SED_EXPANSIONS" | tr -d "[:space:]\"'\\\\${MARK}")
 # サブコマンドの位置が動的（`gh pr $M` `gh pr $(echo merge)` `gh pr {merge,}`）なら、何を実行するか
 # 読めないので確認に倒す。
 GH_PR_DYNAMIC="(^|[^[:alnum:]_-])${GH_TOK}[[:space:]]+pr${PR_FLAGS}[[:space:]]+[^[:space:]]*[\$\{(]"
@@ -161,6 +171,7 @@ MERGE_REST=$(printf '%s' "$MERGE_TEXT" | sed -E "s/${GH_PR_BENIGN}//g")
 # hub merge も同じ。
 if printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_MERGE" \
   || printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_DYNAMIC" \
+  || printf '%s' "$SQUASHED" | grep -q 'ghprmerge' \
   || printf '%s' "$MERGE_REST" | grep -qE "$GH_PR_ANY" \
   || { printf '%s' "$MERGE_TEXT" | grep -q 'pulls' && printf '%s' "$MERGE_TEXT" | grep -qE "[/-]merge${TERM_END}"; } \
   || printf '%s' "$MERGE_TEXT" | grep -qE "/repos/[^[:space:]]+/merges${TERM_END}|repos/[^[:space:]]+/merges${TERM_END}" \
