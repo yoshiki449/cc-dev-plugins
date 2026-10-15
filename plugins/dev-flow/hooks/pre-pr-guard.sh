@@ -30,7 +30,7 @@ ASK_MERGE_REASON="[dev-flow] PR のマージです。マージは取り消せな
 
 # GitHub MCP の PR マージ。クラウドセッションは gh が無く MCP で操作するので、Bash だけ見ると素通りする。
 case "$TOOL" in
-  *merge_pull_request) emit_ask "$ASK_MERGE_REASON"; exit 0 ;;
+  *merge_pull*|*merge_pr*|*auto_merge*|*enqueue*|*merge_branch*) emit_ask "$ASK_MERGE_REASON"; exit 0 ;;
 esac
 
 # PR 作成コマンド以外は対象外。
@@ -128,16 +128,31 @@ fi
 # 見落としはそのまま承認なしのマージになる一方、見すぎた場合の代償は確認が1回増えるだけなので、
 # 内容は消さず、引用符・バックスラッシュ・バッククォートの**文字だけ**を外し、改行は空白にして探す。
 # 代償として、コミットメッセージや PR 本文にこれらの文字列を書いただけでも確認が出る（意図した挙動）。
-# 検出できないもの: gh の alias 経由（gh alias set）、別ファイルのスクリプトの中、変数に組み立てたコマンド。
-MERGE_TEXT=$(printf '%s' "$COMMAND" | tr -d "\"'\`\\\\" | tr '\n\t' '  ')
+# 検出できないもの: gh の alias 経由（gh alias set）、別ファイルのスクリプトの中、base ブランチの ref を
+# 直接書き換える API（git/refs の PATCH）、手元からの git push（PR のマージ操作ではない）。
+MERGE_TEXT=$(printf '%s' "$COMMAND" | tr -d "\"'\`\\\\" | tr '\n\t' '  ' | sed -E 's/\$\{IFS\}|\$IFS/ /g')
+# 終端は空白に限らない（`gh pr merge;` `gh pr merge)` `gh pr merge&&` を取り逃がす。実測）。
+TERM_END='([^[:alnum:]_-]|$)'
+# gh の位置は、gh そのものか、`$` を含む語（`$G pr merge` / `${GH} pr merge`）。
+GH_TOK='(gh|[^[:space:]]*\$[^[:space:]]*)'
 # gh pr [フラグ [値]]... merge。`gh pr -R o/r merge` のように gh pr の直後にフラグが挟まる形を含む。
 # gh pr create --body "... merge ..." のような作成コマンドは、create がフラグではないので当たらない。
-GH_PR_MERGE='(^|[^[:alnum:]_-])gh[[:space:]]+pr([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+merge([[:space:]]|$)'
-# マージ API は `pulls` と `/merge` が同じコマンドにあれば当てる（番号が変数、URL を文字列連結、などの形を拾うため）。
-# GraphQL の mergePullRequest / enablePullRequestAutoMerge（auto-merge の予約）も同じ扱い。
+PR_FLAGS='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
+GH_PR_MERGE="(^|[^[:alnum:]_-])${GH_TOK}[[:space:]]+pr${PR_FLAGS}[[:space:]]+merge${TERM_END}"
+# サブコマンドの位置が動的（`gh pr $M` `gh pr $(echo merge)` `gh pr {merge,}`）なら、何を実行するか
+# 読めないので確認に倒す。
+GH_PR_DYNAMIC="(^|[^[:alnum:]_-])${GH_TOK}[[:space:]]+pr${PR_FLAGS}[[:space:]]+[^[:space:]]*[\$\{(]"
+# マージ API: `pulls` があり、`/merge` か `-merge`（`pulls/N/merge` `pulls/N/auto-merge`）が同じコマンドにあれば当てる
+# （番号が変数、URL を文字列連結、などの形を拾うため）。`mergeable` は当てない。
+# ブランチ同士をマージする `repos/.../merges` も、PR を経ずに base ブランチへ入るので同じ扱い。
+# GraphQL: mergePullRequest / enablePullRequestAutoMerge（auto-merge の予約）/ enqueuePullRequest（merge queue）/ mergeBranch。
+# hub merge も同じ。
 if printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_MERGE" \
-  || { printf '%s' "$MERGE_TEXT" | grep -q 'pulls' && printf '%s' "$MERGE_TEXT" | grep -qE '/merge([^[:alnum:]_-]|$)'; } \
-  || printf '%s' "$MERGE_TEXT" | grep -qE 'mergePullRequest|enablePullRequestAutoMerge'; then
+  || printf '%s' "$MERGE_TEXT" | grep -qE "$GH_PR_DYNAMIC" \
+  || { printf '%s' "$MERGE_TEXT" | grep -q 'pulls' && printf '%s' "$MERGE_TEXT" | grep -qE "[/-]merge${TERM_END}"; } \
+  || printf '%s' "$MERGE_TEXT" | grep -qE "/repos/[^[:space:]]+/merges${TERM_END}|repos/[^[:space:]]+/merges${TERM_END}" \
+  || printf '%s' "$MERGE_TEXT" | grep -qE 'mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|mergeBranch' \
+  || printf '%s' "$MERGE_TEXT" | grep -qE "(^|[^[:alnum:]_-])hub[[:space:]]+merge${TERM_END}"; then
   emit_ask "$ASK_MERGE_REASON"
   exit 0
 fi

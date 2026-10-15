@@ -662,6 +662,19 @@ test('#64: 注意書きは dev-ship 経由（マーカー一致）で消える',
 
 const MERGE_CMD = ['gh', 'pr', 'merge'].join(' ');
 
+// GitHub MCP のうち、PR や base ブランチへ変更を入れるツール。クラウドは gh が無く MCP で操作する。
+const MERGE_TOOLS = [
+  'mcp__github__merge_pull_request',
+  'mcp__github__enable_pr_auto_merge',
+  'mcp__github__enqueue_pull_request',
+  'mcp__github__merge_branch',
+];
+const NON_MERGE_TOOLS = [
+  'mcp__github__create_pull_request',
+  'mcp__github__update_pull_request',
+  'mcp__sheets__merge_cells',
+];
+
 function askReason(res) {
   const out = JSON.parse(res.stdout).hookSpecificOutput;
   assert.equal(out.hookEventName, 'PreToolUse');
@@ -731,16 +744,15 @@ test('#64: マージの承認確認は .agent/ の有無・git 管理下かど�
   assert.equal(runHook({ cwd: mkdtemp(t), command: `${MERGE_CMD} 12` }).outcome, ASK);
 });
 
-test('#64: MCP の merge_pull_request も承認確認になる（クラウドは gh が無く MCP で操作する）', (t) => {
-  const r = withOutcome(
-    spawnSync('bash', [HOOK], {
-      input: JSON.stringify({ cwd: mkdtemp(t), tool_name: 'mcp__github__merge_pull_request', tool_input: { pullNumber: 12 } }),
-      encoding: 'utf8',
-      env: GIT_ENV,
-    }),
-  );
-  assert.equal(r.outcome, ASK);
-  askReason(r);
+test('#64: MCP のマージ系ツールは承認確認になる（クラウドは gh が無く MCP で操作する）', (t) => {
+  for (const tool of MERGE_TOOLS) {
+    const r = runHook({ cwd: mkdtemp(t), tool, command: '' });
+    assert.equal(r.outcome, ASK, `${tool}: 確認が出ない`);
+    askReason(r);
+  }
+  for (const tool of NON_MERGE_TOOLS) {
+    assert.notEqual(runHook({ cwd: mkdtemp(t), tool, command: '' }).outcome, ASK, `${tool}: 過剰に確認が出ている`);
+  }
 });
 
 test('#64: マージ以外は承認確認にならない（PR 作成・閲覧・ローカルの git merge）', (t) => {
@@ -753,6 +765,10 @@ test('#64: マージ以外は承認確認にならない（PR 作成・閲覧・
     'gh pr checks 12',
     'gh pr create --fill', // PR 作成は止めない（マーカー一致なので注意書きも出ない）
     'gh pr create --title t --body-file b.md',
+    'gh pr create --title t --body "$BODY"',
+    'gh pr create --body-file $F',
+    'gh pr view $N',
+    'gh api repos/o/r/pulls/1 --jq .mergeable',
     'git merge feature/x', // ローカルの git merge は PR のマージではないので対象外
     'git status',
   ]) {
@@ -800,6 +816,22 @@ test('#64: 検出を迂回できる書き方でも承認確認になる（セキ
     ['マージ API の番号が変数', 'gh api -X PUT repos/o/r/pulls/$N/merge'],
     ['マージ API の URL を文字列連結', "python3 -c \"import requests; requests.put(base + '/pulls/' + n + '/merge')\""],
     ['行継続での分割', 'gh pr \\\n merge 1'],
+    // 2回目のセキュリティレビュー（解析のずれ / 検出対象の列挙漏れ）で実測した形
+    ['merge の直後が空白でない', `${MERGE_CMD};echo`],
+    ['サブシェル', `(${MERGE_CMD})`],
+    ['&& が続く', `${MERGE_CMD}&&echo`],
+    ['${IFS} で区切る', 'gh${IFS}pr${IFS}merge 1'],
+    ['$IFS で区切る', 'gh$IFS' + 'pr$IFS' + 'merge 1'],
+    ['サブコマンドを変数に入れる', 'M=merge; gh pr $M 1'],
+    ['サブコマンドをコマンド置換で作る', 'gh pr $(echo merge) 1'],
+    ['サブコマンドをブレース展開で作る', 'gh pr {merge,} 1'],
+    ['gh を変数に入れる', 'G=gh; $G pr merge 1'],
+    ['ブランチ同士のマージ API', 'gh api repos/o/r/merges -f base=main -f head=feat'],
+    ['ブランチ同士のマージ API（curl）', 'curl -X POST https://api.github.com/repos/o/r/merges -d "{}"'],
+    ['auto-merge の予約（REST）', 'gh api -X PUT repos/o/r/pulls/1/auto-merge'],
+    ['merge queue への投入（GraphQL）', "gh api graphql -f query='mutation{enqueuePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'"],
+    ['mergeBranch（GraphQL）', "gh api graphql -f query='mutation{mergeBranch(input:{}){x}}'"],
+    ['hub merge', 'hub merge https://github.com/o/r/pull/1'],
   ]) {
     assert.equal(runHook({ cwd: repo, command }).outcome, ASK, `${label}: 確認が出ない: ${command}`);
   }
@@ -817,6 +849,12 @@ test('#64: hooks.json が Bash と MCP のマージ用 matcher でこのフッ�
         h.hooks.some((c) => c.command.includes('pre-pr-guard.sh')),
     );
   assert.ok(registered('Bash'), 'Bash でこのフックが発火しない');
-  assert.ok(registered('mcp__github__merge_pull_request'), 'MCP のマージでこのフックが発火しない');
-  assert.ok(!registered('mcp__github__create_pull_request'), 'MCP の PR 作成まで巻き込んでいる');
+  // フック本体が確認を出せても、登録されていなければ一度も呼ばれない。本体が ask を返す名前は
+  // すべて登録側にも要る（片方だけ直すと、本体のテストが通ったまま発火しない）。
+  for (const name of MERGE_TOOLS) {
+    assert.ok(registered(name), `MCP の ${name} でこのフックが発火しない`);
+  }
+  for (const name of NON_MERGE_TOOLS) {
+    assert.ok(!registered(name), `MCP の ${name} まで巻き込んでいる`);
+  }
 });
