@@ -91,11 +91,21 @@ test('AC6: スキル名の先頭スラッシュは吐き出さず1つに正規�
   }
 });
 
-test('AC7: 2行目に作業場所（引継書の worktree 絶対パス欄を優先）と Issue 番号を出す', () => {
-  const dir = fixture({
-    'handover-20261007-1619-issue496.md':
-      '# 引継書\n\n## worktree 情報\n- **worktree 絶対パス**: `/work/proj/worktrees/fix-496/` ← 次フェーズはここに cd\n',
-  });
+// worktree 欄の行は handover-template.md の実物から取る。テスト側に転記すると、正準に後から
+// 説明（`cd` のようなバッククォート入りの注記）が足されたとき、fixture だけが古いまま通る。
+// 実測: 転記した fixture には2組目のバッククォートが無く、貪欲な抽出が `cd` を拾う不具合を見逃した。
+const TEMPLATE = path.join(__dirname, '..', 'reference', 'handover-template.md');
+const PLACEHOLDER = '<project-folder>/worktrees/<branch-basename>/';
+function templateWorktreeLine() {
+  const line = fs.readFileSync(TEMPLATE, 'utf8').split('\n').find((l) => l.includes('worktree 絶対パス'));
+  assert.ok(line && line.includes(PLACEHOLDER), `テンプレートの worktree 欄が見つからない: ${line}`);
+  assert.ok((line.match(/`/g) || []).length >= 4, 'テンプレートの worktree 欄にバッククォートが2組以上ある前提が崩れた（このテストの狙いが空になる）');
+  return line;
+}
+
+test('AC7: 2行目に作業場所（引継書の worktree 絶対パス欄を優先）と Issue 番号を出す。欄の後ろに別のバッククォート注記があっても欄の値を拾う', () => {
+  const filled = templateWorktreeLine().replace(PLACEHOLDER, '/work/proj/worktrees/fix-496/');
+  const dir = fixture({ 'handover-20261007-1619-issue496.md': `# 引継書\n\n## worktree 情報\n${filled}\n` });
   const r = run(dir, ['dev-verify']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.lines[1], /^作業場所: \/work\/proj\/worktrees\/fix-496\//);
@@ -103,10 +113,7 @@ test('AC7: 2行目に作業場所（引継書の worktree 絶対パス欄を優�
 });
 
 test('AC8: worktree 欄が未記入のテンプレートのまま（<...>）なら採用せず、cwd にフォールバックする', () => {
-  const dir = fixture({
-    'handover-20261007-1619-issue496.md':
-      '- **worktree 絶対パス**: `<project-folder>/worktrees/<branch-basename>/`\n',
-  });
+  const dir = fixture({ 'handover-20261007-1619-issue496.md': `${templateWorktreeLine()}\n` });
   const r = run(dir, ['dev-verify']);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!r.lines[1].includes('<project-folder>'), r.lines[1]);

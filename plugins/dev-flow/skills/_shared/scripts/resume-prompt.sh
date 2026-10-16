@@ -35,8 +35,10 @@ fi
 HANDOVER_ABS="$(cd "$(dirname "$HANDOVER")" && pwd -P)/$(basename "$HANDOVER")"
 
 # 作業場所は引継書の「worktree 絶対パス」欄を優先する。cwd は /clear 後の起動場所に左右されるため。
-# 欄が未記入のテンプレート（<project-folder> のような山括弧入り）は採用しない
-WT=$(grep -m1 'worktree 絶対パス' "$HANDOVER" 2>/dev/null | sed -n 's/.*`\([^`]*\)`.*/\1/p' || true)
+# 欄が未記入のテンプレート（<project-folder> のような山括弧入り）は採用しない。
+# 値は行の最初のバッククォート対。テンプレートは行末にも `cd` の注記を持つので、先頭アンカーが無いと
+# 貪欲な .* が最後の対を拾い、作業場所が「cd」になる
+WT=$(grep -m1 'worktree 絶対パス' "$HANDOVER" 2>/dev/null | sed -n 's/^[^`]*`\([^`]*\)`.*/\1/p' || true)
 if [ -z "$WT" ] || [[ $WT == *"<"* ]]; then
   WT=$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)
 fi
