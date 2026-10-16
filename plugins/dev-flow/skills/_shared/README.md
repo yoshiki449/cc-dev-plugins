@@ -162,6 +162,8 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 
 `dev-plan` に read が無いのは最初のフェーズで読む引継書が無いため。`dev-test-ledger` と `dev-self-review` に show が無いのは、前者が引継書を書かず、後者は書いた後に `/clear` を挟まず ship へ続くため。
 
+`dev-qa` と `dev-fix` の再開プロンプトは次フェーズに `dev-test-ledger` を指すことがあるが、`dev-test-ledger` は引継書を読む節（T0 は Issue 番号の解決と差分チェック）を持たず、貼られた `引継書:` のパスは使わない。Issue 番号は引継書のファイル名から取れるため実害は小さい。
+
 ## 設計方針
 
 - **DRY**: 「最新引継書取得」「日付つきファイル名生成」「Issue番号抽出」が各SKILL.mdに散在していたのを集約
