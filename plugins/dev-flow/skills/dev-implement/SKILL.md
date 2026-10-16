@@ -66,7 +66,12 @@ adversarial-verifier は overlay の固定位置を自分で読む（実行時�
 > **フェーズ開始時の共通前処理**: `mkdir -p .agent && git branch --show-current > .agent/.dev-flow-active` を実行してフェーズマーカーを書き込む（suggest-dev-phase hook のフェーズ想起案内を沈黙させる。`/dev-ship` E7 が掃除する）
 
 ### Step 0: 引継書の読み込み
-1. `bash skills/_shared/scripts/latest-handover.sh` で最新引継書を取得
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書を読む
 2. 環境情報、未完了タスク、ユーザー指示を確認
 3. 引継書に記録された **worktree 絶対パス** を控える（Step 0.5 で照合）
 
@@ -304,7 +309,12 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <REPO_ROOT> --main-model
    - ユーザーからの指示・フィードバック
    - 却下した案と理由
    - Deviations（`.agent/deviations-wip.md` を転記して削除。無ければ「逸脱なし」と1行）
-3. コンテキストの区切りを判定する（[advisor の扱いとコンテキストの区切り](../_shared/reference/advisor-policy.md)。文言はそのまま）。Step 6 の確認はこの結果に従う:
+3. 再開プロンプトを表示する（`<次フェーズのスキル名>` は Step 6 で案内する `dev-verify`。全 Phase の実装が終わっていても次は `dev-verify`）:
+
+   <!-- resume-prompt:show -->
+   - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+   <!-- /resume-prompt:show -->
+4. コンテキストの区切りを判定する（[advisor の扱いとコンテキストの区切り](../_shared/reference/advisor-policy.md)。文言はそのまま）。Step 6 の確認はこの結果に従う:
 
    <!-- advisor-policy:context-check -->
    - 引継書を書いたら `node skills/_shared/scripts/context-size.mjs` でコンテキスト量を測る。`over` が `true` なら、次に進むかを尋ねる代わりに、測った `tokens` の値を示して「`/clear` してから次のコマンドを打ってください」と伝える。`tokens` が `null` なら `warning` をそのまま示し、従来どおり尋ねる

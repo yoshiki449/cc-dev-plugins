@@ -65,7 +65,12 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 ## 手順
 
 ### Q0. 引継書の読み込み
-1. 最新の引継書を読み込む: `ls -1 .agent/handover-*.md | tail -1`
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書を読み込む
 2. Issue URL・ブランチ名・環境情報（ポート・ログイン情報）を確認
 3. **全Phaseの実装・検証が完了していることを確認**。未完了のPhaseがあれば `/dev-verify` または `/dev-implement` を案内して中断する
 
@@ -223,7 +228,12 @@ QA 後はユーザーの成果物レビュー（ship 判断）が控えるため
    - 指摘件数（Critical / Major / Minor）
    - QAレポートのパス（`.agent/reports/qa-report-<Issue番号>.md`）と証跡ディレクトリのパス
    - 未対応の指摘（ユーザーが「このまま進む」を選んだもの）
-3. 次のアクションをユーザーに確認（正準順は verify → test-spec → qa → 台帳 → ship）:
+3. 再開プロンプトを表示する（`<次フェーズのスキル名>` は次の 4 で案内する `dev-test-ledger` か `dev-fix`）:
+
+   <!-- resume-prompt:show -->
+   - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+   <!-- /resume-prompt:show -->
+4. 次のアクションをユーザーに確認（正準順は verify → test-spec → qa → 台帳 → ship）:
    - **合格・条件付き合格**: 「QAが完了しました。/clear して `/dev-test-ledger`（統合モード）で自動＋手動のテストカバレッジを最終確認してから `/dev-ship` に進めますか？」（手動テスト仕様書があれば統合モードで🟣手動漏れまで確認できる。台帳確認後に ship へ）
    - **不合格（修正へ）**: 「/clear して修正フェーズ（/dev-fix）に進めますか？」
 

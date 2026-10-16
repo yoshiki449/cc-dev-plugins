@@ -14,7 +14,12 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, gh
 ## 手順
 
 ### B0. 引継書の読み込み
-1. `bash skills/_shared/scripts/latest-handover.sh` で最新引継書のパスを取得し、存在すれば読み込む
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書のパスが存在すれば読み込む
 2. Issue URL、フェーズ分割内容、ユーザー指示を確認
 3. 引継書に `## アーキテクチャ設計` セクションが含まれていれば **新規プロジェクト** と判定し、B1a を実行する
 
@@ -362,7 +367,12 @@ E2E テストを含むプロジェクト（`playwright.config.{ts,js,mjs,cjs}` �
    - DB マイグレーション・シード実行の有無
    - 各サービスの URL
    - 次フェーズ（implement）への引継事項
-3. ユーザーに「/clear して次フェーズ（/dev-implement）に進めますか？」と確認
+3. 再開プロンプトを表示する（`<次フェーズのスキル名>` は `dev-implement`）:
+
+   <!-- resume-prompt:show -->
+   - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+   <!-- /resume-prompt:show -->
+4. ユーザーに「/clear して次フェーズ（/dev-implement）に進めますか？」と確認
 
 ## 出力
 - `.agent/handover-YYYYMMDD-HHMM-issue<番号>.md`（引継書・新規作成、worktree 絶対パス必須）

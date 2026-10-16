@@ -84,7 +84,7 @@ Phase N+1: /dev-implement → /dev-verify → （fixがあれば /dev-fix）
 
 - **保存先**: `.agent/handover-YYYYMMDD-HHMM[-issue{番号}].md`（例: `handover-20260330-1430-issue63.md`、Issue番号は任意）
 - **毎回新規ファイル**を作成（上書きしない）。過去の引継書はストックとして残る
-- **フェーズ開始時**: `ls -1 .agent/handover-*.md | tail -1` で最新の引継書を読み込む
+- **フェーズ開始時**: 入力に `引継書: <パス>` があればそのパスを、無ければ `bash skills/_shared/scripts/latest-handover.sh` の結果（ファイル名の日付で最新を決める。`ls | tail -1` は日付なしの引継書を最新と誤る）を読み込む
 - **フェーズ終了時**: 新しい引継書を作成し、ユーザーに「/clearして次フェーズに進めますか？」と確認
 - **/bye 実行時にも引継書を作成する**（フェーズ名は `bye`）
 

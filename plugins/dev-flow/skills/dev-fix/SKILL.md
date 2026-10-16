@@ -19,7 +19,12 @@ Issue仕様との差異分析を起点に、修正方針の策定→実装→検
 > **フェーズ開始時の共通前処理**: `mkdir -p .agent && git branch --show-current > .agent/.dev-flow-active` を実行してフェーズマーカーを書き込む（suggest-dev-phase hook のフェーズ想起案内を沈黙させる。`/dev-ship` E7 が掃除する）
 
 ### F0. 引継書の読み込み
-1. `.agent/handover-*.md` の最新ファイル（`ls -1 .agent/handover-*.md | tail -1`）を読み込む
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書を読み込む
 2. 現在のブランチ、実装済み機能、環境情報を確認
 3. 引継書に記録された **worktree 絶対パス** を控える（F0.5 で照合）
 
@@ -185,6 +190,12 @@ Issue仕様との差異分析を起点に、修正方針の策定→実装→検
   - 修正完了（QA未実施） → 「`/clear` してQAフェーズ（`/dev-qa`）に進めますか？」
   - 修正完了（QA指摘の修正） → 「`/clear` して再QA（`/dev-qa`）に進めますか？」（再探索は指摘箇所周辺に絞ってよい）
   - 修正完了（QA合格済み） → 「`/clear` して `/dev-test-ledger`（統合）でテストカバレッジを確認してから `/dev-ship` に進めますか？」（テストを修正した場合は台帳が変わるため）
+
+引継書を書いたら再開プロンプトを表示する（`<次フェーズのスキル名>` は上の「次のアクション提案」で選んだ `dev-fix` / `dev-qa` / `dev-test-ledger` のどれか）:
+
+<!-- resume-prompt:show -->
+- 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+<!-- /resume-prompt:show -->
 
 ## コミット粒度ルール
 

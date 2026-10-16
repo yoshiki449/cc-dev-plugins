@@ -132,6 +132,35 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `dev-implement` | context-check | 「### Step 5: 引継書更新 ⚠ 必須（スキップ不可）」 |
 | `dev-verify` | context-check | 「### D7. 引継書更新 ⚠ 必須（スキップ不可）」 |
 
+## 再開プロンプトの消費者
+
+`reference/handover-template.md` の「再開プロンプト」節にある 2 つの文（`show`=フェーズ末尾で貼る文面を出す、`read`=フェーズ冒頭で貼られたパスを読む）は、**各 SKILL.md に複製で置く**。`scripts/resume-prompt-docs.test.js` が表と実ファイルの両方を突き合わせる。**新しい消費者を足したらこの表にも足すこと**。
+
+節名は「」で囲む。`read` は「引継書を読み込む」見出しを持つ SKILL.md が全て載っていることをテストが検査する。
+
+| スキル | 文 | 節 |
+|---|---|---|
+| `dev-plan` | show | 「### A9. 引継書作成 ⚠ 必須（スキップ不可）」 |
+| `dev-design` | show | 「### D5. 引継書作成 ⚠ 必須（スキップ不可）」 |
+| `dev-setup` | show | 「### B6. 引継書更新 ⚠ 必須（スキップ不可）」 |
+| `dev-implement` | show | 「### Step 5: 引継書更新 ⚠ 必須（スキップ不可）」 |
+| `dev-verify` | show | 「### D7. 引継書更新 ⚠ 必須（スキップ不可）」 |
+| `dev-fix` | show | 「#### 引継書の作成 ⚠ 必須（スキップ不可）」 |
+| `dev-test-spec` | show | 「### F6. 引継書更新」 |
+| `dev-qa` | show | 「### Q7. 引継書更新 ⚠ 必須（スキップ不可）」 |
+| `dev-design` | read | 「### D0. 直前フェーズの引継書を読み込む」 |
+| `dev-setup` | read | 「### B0. 引継書の読み込み」 |
+| `dev-implement` | read | 「### Step 0: 引継書の読み込み」 |
+| `dev-verify` | read | 「### D0. 引継書の読み込み」 |
+| `dev-fix` | read | 「### F0. 引継書の読み込み」 |
+| `dev-test-spec` | read | 「### F0. 引継書の読み込み」 |
+| `dev-qa` | read | 「### Q0. 引継書の読み込み」 |
+| `dev-ship` | read | 「### E0. 引継書の読み込み」 |
+| `dev-self-review` | read | 「### S0. 引継書の読み込み」 |
+| `dev-loop` | read | 「### L0. 前提確認と進捗ファイル作成」 |
+
+`dev-plan` に read が無いのは最初のフェーズで読む引継書が無いため。`dev-test-ledger` と `dev-self-review` に show が無いのは、前者が引継書を書かず、後者は書いた後に `/clear` を挟まず ship へ続くため。
+
 ## 設計方針
 
 - **DRY**: 「最新引継書取得」「日付つきファイル名生成」「Issue番号抽出」が各SKILL.mdに散在していたのを集約

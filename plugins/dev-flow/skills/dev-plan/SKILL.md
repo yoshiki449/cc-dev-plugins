@@ -301,7 +301,12 @@ Plan mode を使っていない場合はスキップ。
    ```
 2. [../_shared/reference/handover-template.md](../_shared/reference/handover-template.md) の共通骨格 + plan フェーズ固有セクション（Issue URL、要求カード、フェーズ分割、（新規時）アーキテクチャ設計、**画面デザインフェーズ判定**）を組み合わせて `$NEW` に書き出す
    - 共通骨格の「未解決事項（承認済み保留）」には Issue 本文と同じ内容を転記する。0 件なら「なし」と明記する（欄ごと省略しない。空欄は「確認していない」と区別がつかないため）
-3. 次フェーズを以下のロジックで案内する:
+3. 再開プロンプトを表示する（[handover-template.md](../_shared/reference/handover-template.md) の「再開プロンプト」。`<次フェーズのスキル名>` は次の 4 で決まる `dev-design` か `dev-setup`）:
+
+   <!-- resume-prompt:show -->
+   - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+   <!-- /resume-prompt:show -->
+4. 次フェーズを以下のロジックで案内する:
    - 新規UIを伴う場合（A5 で画面一覧が複数生成された、または既存コンポーネント再利用のみではない場合）→ 「/clear して `/dev-design` に進めますか？」
    - UIなし・既存UI再利用のみの場合 → 「/clear して `/dev-setup` に進めますか？」（design はスキップ）
 

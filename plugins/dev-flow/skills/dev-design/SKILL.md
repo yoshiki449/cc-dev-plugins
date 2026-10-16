@@ -29,6 +29,10 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Agent, DesignSync, gh, AskUserQues
 
 ### D0. 直前フェーズの引継書を読み込む
 
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
 ```bash
 LATEST=$(bash skills/_shared/scripts/latest-handover.sh)
 ```
@@ -114,7 +118,12 @@ LATEST=$(bash skills/_shared/scripts/latest-handover.sh)
    NEW=$(bash skills/_shared/scripts/new-handover-path.sh <Issue番号>)
    ```
 2. 共通テンプレート + design フェーズ固有セクションを書き出す
-3. ユーザーに「/clear して `/dev-setup` に進めますか？」と確認
+3. 再開プロンプトを表示する（`<次フェーズのスキル名>` は `dev-setup`）:
+
+   <!-- resume-prompt:show -->
+   - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+   <!-- /resume-prompt:show -->
+4. ユーザーに「/clear して `/dev-setup` に進めますか？」と確認
 
 #### design フェーズ固有セクション
 

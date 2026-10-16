@@ -36,7 +36,12 @@ overlay の有無にかかわらず、PR 作成前に次の1点は必ず確認�
 ## 手順
 
 ### E0. 引継書の読み込み
-1. `.agent/handover-*.md` の最新ファイル（`ls -1 .agent/handover-*.md | tail -1`）を読み込む
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書を読み込む
 2. テスト結果、未修正バグ、PR作成に必要な情報を確認
 3. ship マーカーを書き込む。**cwd に依存しないよう、ship 対象の絶対パスから解決する**:
    ```bash

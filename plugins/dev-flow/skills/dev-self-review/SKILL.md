@@ -56,8 +56,13 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Agent, Skill, gh, mcp__codex__code
 ## 手順
 
 ### S0. 引継書の読み込み
-1. `bash skills/_shared/scripts/latest-handover.sh` で最新引継書を取得
-2. Issue 番号を取得: `bash skills/_shared/scripts/extract-issue-number.sh`
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書を取得
+2. Issue 番号を取得: `bash skills/_shared/scripts/extract-issue-number.sh <上で決めた引継書のパス>`
 3. 出力ディレクトリ作成: `mkdir -p .agent/self-review/<Issue番号>`
 
 ### S1. 差分の確定

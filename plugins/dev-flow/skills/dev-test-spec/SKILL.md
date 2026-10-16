@@ -90,7 +90,11 @@ overlay の有無にかかわらず、次の1点は必ず守る（誤送信は�
 
 ### F0. 引継書の読み込み
 
-1. `ls -1 .agent/handover-*.md | tail -1` で最新の引継書を特定して Read する
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+1. 上の規則で決まった引継書を Read する
 2. 以下を控える（後続ステップの入力になる）: テスト結果（E2E件数）／Issue URL／PR URL／案件名
 
 ### F1. テスト計画の作成（自動/手動の分類）
@@ -282,7 +286,12 @@ pdftoppm -png -f 2 -l 2 -r 800 -x 500 -y 580 -W 3600 -H 1300 test-spec.pdf spec_
 
 1. `.agent/handover-YYYYMMDD-HHMM[-issue{番号}].md` を**新規作成**（既存ファイルの上書き禁止）
 2. 記載必須項目: 両テスト仕様書の URL／テストケース件数（自動/手動の内訳）／レビュー状況／次フェーズ（qa）への引継事項（正準順は verify → test-spec → qa → 台帳 → ship）
-3. ユーザーに「/clear して QA フェーズ（/dev-qa）に進めますか？」と確認
+3. 再開プロンプトを表示する（`<次フェーズのスキル名>` は `dev-qa`）:
+
+   <!-- resume-prompt:show -->
+   - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+   <!-- /resume-prompt:show -->
+4. ユーザーに「/clear して QA フェーズ（/dev-qa）に進めますか？」と確認
 
 ## 手動テスト手順の文章規約（groups の書き方）
 

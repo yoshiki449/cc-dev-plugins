@@ -80,6 +80,31 @@
 3. 2 が 0 以外（追跡対象）なら、その 1 ファイルだけをコミットする: `git add <引継書のパス>` → `git diff --cached --name-only` が引継書だけであることを確認する（他のステージ済み変更を巻き込まない）→ `git commit -m "docs: 引継書（<フェーズ>）を追加 #<Issue番号>"`。push は通常のブランチ運用に従う
 <!-- /handover-share:steps -->
 
+## 再開プロンプト（/clear の後に貼る）
+
+`/clear` すると会話は消え、次のコマンドは何も知らない状態で始まる。次フェーズが引継書を毎回探索すると、探し方がずれたときに別の Issue の引継書を読む。そこで、フェーズの終わりに「次のコマンド＋引継書の絶対パス＋作業場所」を貼れる形で出し、次フェーズはそのパスを探索せずに読む。
+
+出力例（`resume-prompt.sh dev-verify`）:
+
+```
+/dev-verify 引継書: /path/to/project/worktrees/feature-12/.agent/handover-20261016-1030-issue12.md
+作業場所: /path/to/project/worktrees/feature-12（ブランチ: feature-12、Issue: #12）
+```
+
+書く側（フェーズ末尾。引継書を書いた直後、コンテキスト量の判定より前に置く）:
+
+<!-- resume-prompt:show -->
+- 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
+<!-- /resume-prompt:show -->
+
+読む側（フェーズ冒頭の引継書の読み込み）:
+
+<!-- resume-prompt:read -->
+- 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+<!-- /resume-prompt:read -->
+
+消費者は `_shared/README.md` の「再開プロンプトの消費者」の表で管理する。
+
 ## 注意事項
 
 - 引継書作成は**スキップ不可**。ユーザーとのやり取りが途中に入っても必ず最後に実行する

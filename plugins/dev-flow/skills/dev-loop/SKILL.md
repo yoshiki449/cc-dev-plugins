@@ -95,8 +95,12 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, gh
    - 多重起動チェック（既存の `in_progress` 進捗ファイルがあれば AskUserQuestion）
 2. **再開チェック**: 引数が `resume` か、未完了ファイルがあれば「最新の loop を再開 / 新規開始 / 中断」を確認
 3. **LOOP.md 読み込み**: `.agent/LOOP.md` があれば「予算（Budget）」セクションの `max_iterations` / `max_commits` を読み、**引数未指定の項目の既定値**として採用する（優先順: 引数 > LOOP.md > SKILL.md 既定。上限 `max_iter ≤ 10`, `max_commits ≤ 30` は LOOP.md 値にも適用）。Autonomy Level 表で dev-loop が `L1` と宣言されているのに `mode=report` 以外で起動された場合は、その旨を警告して mode=report を推奨する
-4. **引継書取得**: `bash skills/_shared/scripts/latest-handover.sh` で最新引継書を取得し、Issue 番号・対象 Phase・残課題を把握
-5. **Issue 番号取得**: `bash skills/_shared/scripts/extract-issue-number.sh`
+4. **引継書取得**: 次の規則で決まった引継書から、Issue 番号・対象 Phase・残課題を把握する:
+
+   <!-- resume-prompt:read -->
+   - 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
+   <!-- /resume-prompt:read -->
+5. **Issue 番号取得**: `bash skills/_shared/scripts/extract-issue-number.sh <上で決めた引継書のパス>`
 6. **baseline SHA 記録**: `git rev-parse HEAD` で `loop_baseline_sha` を保存
 7. **開始時刻記録**: `date +%s` で `loop_started_at_epoch` を保存（`max_loop_runtime_minutes` 判定に使う）
 8. **進捗ファイル作成**: `.agent/devloop-<YYYYMMDD-HHMM>.md`（テンプレートは下記）
