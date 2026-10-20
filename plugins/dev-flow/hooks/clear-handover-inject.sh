@@ -111,21 +111,35 @@ fi
 # 追跡済みでクリーン → 最後に変更したコミット B の B..HEAD。それ以外 → mtime より厳密に新しい committer date。
 # git の失敗では止めない（失敗したら警告なし）。外部入力は引数として渡し、評価しない。
 STALE=""
+# 計算全体は timeout で包む（巨大な履歴で hook の 10 秒制限を超えると注入本体ごと失われるため）。
+# timeout / gtimeout が無い環境では時間制限なしで実行する。時間切れ・失敗は警告なしになる。
+# パスは引数で渡し、コマンド文字列には埋め込まない。--literal-pathspecs で glob 解釈を止める。
+STALE_SCRIPT='
+CWD=$1; REL=$2; HANDOVER=$3
+git() { command git --literal-pathspecs "$@"; }
+git -C "$CWD" rev-parse --verify -q HEAD >/dev/null 2>&1 || exit 0
+if git -C "$CWD" ls-files --error-unmatch -- "$REL" >/dev/null 2>&1 \
+   && [ -z "$(git -C "$CWD" status --porcelain -- "$REL" 2>/dev/null)" ]; then
+  base=$(git -C "$CWD" log -1 --format=%H -- "$REL" 2>/dev/null)
+  [ -n "$base" ] || exit 0
+  git -C "$CWD" rev-list --count "$base..HEAD" 2>/dev/null
+else
+  mtime=$(stat -c %Y "$HANDOVER" 2>/dev/null || stat -f %m "$HANDOVER" 2>/dev/null)
+  [[ $mtime =~ ^[0-9]+$ ]] || exit 0
+  git -C "$CWD" log --since="$mtime" --format=%ct HEAD 2>/dev/null | awk -v m="$mtime" "\$1 > m { n++ } END { print n + 0 }"
+fi
+'
 stale_count() {
-  local base mtime
-  git -C "$CWD" rev-parse --verify -q HEAD >/dev/null 2>&1 || return 0
-  if git -C "$CWD" ls-files --error-unmatch -- "$REL" >/dev/null 2>&1 \
-     && [ -z "$(git -C "$CWD" status --porcelain -- "$REL" 2>/dev/null)" ]; then
-    base=$(git -C "$CWD" log -1 --format=%H -- "$REL" 2>/dev/null)
-    [ -n "$base" ] || return 0
-    git -C "$CWD" rev-list --count "$base..HEAD" 2>/dev/null
+  local t=""
+  if command -v timeout >/dev/null 2>&1; then t=timeout
+  elif command -v gtimeout >/dev/null 2>&1; then t=gtimeout; fi
+  if [ -n "$t" ]; then
+    "$t" 3 bash -c "$STALE_SCRIPT" _ "$CWD" "$REL" "$HANDOVER" 2>/dev/null
   else
-    mtime=$(stat -c %Y "$HANDOVER" 2>/dev/null || stat -f %m "$HANDOVER" 2>/dev/null)
-    [[ $mtime =~ ^[0-9]+$ ]] || return 0
-    git -C "$CWD" log --format=%ct HEAD 2>/dev/null | awk -v m="$mtime" '$1 > m { n++ } END { print n + 0 }'
+    bash -c "$STALE_SCRIPT" _ "$CWD" "$REL" "$HANDOVER" 2>/dev/null
   fi
 }
-STALE_N=$(stale_count)
+STALE_N=$(stale_count || true)
 if [[ $STALE_N =~ ^[0-9]+$ ]] && [ "$STALE_N" -gt 0 ]; then
   STALE_HASH=$(git -C "$CWD" rev-parse --short HEAD 2>/dev/null)
   STALE_WHEN=$(git -C "$CWD" log -1 --format=%cd --date="format:%Y-%m-%d %H:%M %z" HEAD 2>/dev/null)
