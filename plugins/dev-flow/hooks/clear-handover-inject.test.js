@@ -849,3 +849,36 @@ test('committer date を使う: 未追跡の引継書（mtime 12:00）は、auth
   const r = run(t, clear(repo));
   assert.ok(r.lines.includes(staleLine(1, hash, '2026-10-20 14:02 +0900')), `期待 1 件:\n${r.stdout}`);
 });
+
+// ---- 鮮度警告: ファイル名の glob 特殊文字（Issue #67）----
+// git の pathspec を glob として解釈すると、[1] / * を含む名前は「そのファイル」に一致せず、
+// 追跡の判定もコミット基準の件数も外れる。ファイル名そのものを対象にすること。
+
+function assertGlobNameCountsCommits(t, name) {
+  const repo = makeRepo(t, 'trial');
+  const p = put(repo, name);
+  // glob として解釈すると同じパターンに一致してしまう兄弟ファイル（後で削除する）。
+  // 兄弟の削除コミットが「最後に変更したコミット」に化けると、件数が 3 から外れる。
+  const sibling = 'handover-20261020-1000-issue71.md';
+  put(repo, sibling);
+  git(repo, ['add', '-f', path.join('.agent', sibling)]);
+  commitHandover(repo, name, 'handover', '2026-10-20T10:00:00+0900');
+  commitAt(repo, 'work 1', '2026-10-20T11:00:00+0900');
+  commitAt(repo, 'work 2', '2026-10-20T12:00:00+0900');
+  git(repo, ['rm', '-q', '-f', path.join('.agent', sibling)]);
+  commitAt(repo, 'remove sibling', '2026-10-20T13:00:00+0900');
+  // mtime を全コミットより新しくする（mtime 基準なら 0 件で警告なし、コミット基準なら 3 件）
+  setMtime(p, epoch('2026-10-21T00:00:00+0900'));
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.stdout.includes(name), `対象の引継書が選ばれていない:\n${r.stdout}`);
+  assert.ok(r.stdout.includes('この引継書の後に 3 件のコミットがある'), `期待 3 件:\n${r.stdout}`);
+}
+
+test('glob 特殊文字: [1] を含む引継書名でも、その名前そのものを追跡扱いにしてコミット基準で 3 件と数える', (t) => {
+  assertGlobNameCountsCommits(t, 'handover-20261020-1000-issue7[1].md');
+});
+
+test('glob 特殊文字: * を含む引継書名でも、その名前そのものを追跡扱いにしてコミット基準で 3 件と数える', (t) => {
+  assertGlobNameCountsCommits(t, 'handover-20261020-1000-issue7*.md');
+});
