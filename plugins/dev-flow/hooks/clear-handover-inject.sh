@@ -12,10 +12,14 @@ SOURCE=$(echo "$INPUT" | jq -r '.source // empty' 2>/dev/null)
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
+# サブディレクトリで /clear されても、リポジトリ直下の .agent/ を基準にする。git 外なら cwd のまま。
+TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)
+[ -n "$TOP" ] && [ -d "$TOP" ] && CWD="$TOP"
+
 BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
 BRANCH_ISSUE=""
-if [[ $BRANCH =~ issue-?([0-9]+) ]]; then
-  BRANCH_ISSUE="${BASH_REMATCH[1]}"
+if [[ $BRANCH =~ (^|[^a-z])issue-?([0-9]+) ]]; then
+  BRANCH_ISSUE="${BASH_REMATCH[2]}"
 fi
 
 REL=""
@@ -43,8 +47,23 @@ elif [[ $NAME =~ ^handover-([0-9]{4})([0-9]{2})([0-9]{2})[-.] ]]; then
   CREATED="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
 fi
 
-PREV=$(grep -m1 -oE '直前フェーズ: *.*' "$HANDOVER" 2>/dev/null)
-NEXT=$(grep -m1 -oE '次フェーズ: *.*' "$HANDOVER" 2>/dev/null)
+# 行頭が「- <ラベル>:」の行だけを対象に、値のある最初の行を使う。CR を除き、先頭200文字まで。
+phase_line() {
+  local label="$1" line v
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    v=${line#"- $label:"}
+    v="${v#"${v%%[![:space:]]*}"}"
+    v="${v%"${v##*[![:space:]]}"}"
+    if [ -n "$v" ]; then
+      echo "$label: ${v:0:200}"
+      return
+    fi
+  done < <(grep -E "^- $label:" "$HANDOVER" 2>/dev/null)
+}
+export LC_ALL=C.UTF-8
+PREV=$(phase_line 直前フェーズ)
+NEXT=$(phase_line 次フェーズ)
 
 # 作業場所のパスは resume-prompt.sh の2行目を再利用する（1行目の再開プロンプトは使わない）。
 # ブランチは cwd のもの。worktree 欄のパスが実在しないと resume-prompt 側ではブランチを取れないため、
