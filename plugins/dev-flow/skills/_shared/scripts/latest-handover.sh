@@ -19,7 +19,7 @@ if [ -n "$ISSUE" ]; then
       filtered+=("$f")
     fi
   done
-  files=("${filtered[@]}")
+  files=(${filtered[@]+"${filtered[@]}"})
 fi
 
 if [ ${#files[@]} -eq 0 ]; then

@@ -47,6 +47,33 @@ elif [[ $NAME =~ ^handover-([0-9]{4})([0-9]{2})([0-9]{2})[-.] ]]; then
   CREATED="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
 fi
 
+# UTF-8 ロケールを探す（C.UTF-8 優先、次に en_US.UTF-8。utf8/UTF-8・大小文字の表記ゆれを許す）。
+# 無ければ空のまま。export LC_ALL を無条件に行うと、無いロケールで setlocale 警告が stderr に出る。
+UTF8_LOC=""
+if command -v locale >/dev/null 2>&1; then
+  LOCALES=$(locale -a 2>/dev/null)
+  for pat in '^c\.utf-?8$' '^en_us\.utf-?8$'; do
+    UTF8_LOC=$(printf '%s\n' "$LOCALES" | grep -iE "$pat" | head -n 1)
+    [ -n "$UTF8_LOC" ] && break
+  done
+fi
+
+# 先頭200文字に切る。UTF-8 ロケールがあればそのまま文字単位で切る。
+# 無ければバイト単位（最大600バイト）で切り、iconv -c で不完全な末尾を落としてから200文字に再度切る。
+cut_200() {
+  local v="$1"
+  if [ -n "$UTF8_LOC" ]; then
+    (export LC_ALL="$UTF8_LOC"; printf '%s' "${v:0:200}")
+    return
+  fi
+  local b
+  b=$(export LC_ALL=C; printf '%s' "${v:0:600}")
+  if command -v iconv >/dev/null 2>&1; then
+    b=$(printf '%s' "$b" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
+  fi
+  printf '%s' "$b" | LC_ALL=C sed -E 's/^(([^\x80-\xFF]|[\xC0-\xFF][\x80-\xBF]*){200}).*/\1/'
+}
+
 # 行頭が「- <ラベル>:」の行だけを対象に、値のある最初の行を使う。CR を除き、先頭200文字まで。
 phase_line() {
   local label="$1" line v
@@ -56,12 +83,11 @@ phase_line() {
     v="${v#"${v%%[![:space:]]*}"}"
     v="${v%"${v##*[![:space:]]}"}"
     if [ -n "$v" ]; then
-      echo "$label: ${v:0:200}"
+      echo "$label: $(cut_200 "$v")"
       return
     fi
   done < <(grep -E "^- $label:" "$HANDOVER" 2>/dev/null)
 }
-export LC_ALL=C.UTF-8
 PREV=$(phase_line 直前フェーズ)
 NEXT=$(phase_line 次フェーズ)
 
