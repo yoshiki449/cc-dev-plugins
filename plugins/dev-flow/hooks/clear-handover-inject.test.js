@@ -294,3 +294,174 @@ test('hooks.json: session-context-inject.sh は登録しない（依頼者が検
   assert.ok(hooksRaw.length > 0, 'hooks.json が読める');
   assert.ok(!hooksRaw.includes('session-context-inject.sh'));
 });
+
+// ---- 敵対的検証の指摘（ブランチ名・フェーズ行・サブディレクトリ・日付形式・スクリプト実在）----
+
+function putRaw(repo, name, content) {
+  const p = path.join(repo, '.agent', name);
+  fs.writeFileSync(p, content);
+  return p;
+}
+
+test('ブランチ名: issue67-foo（ハイフン無し）でも Issue #67 を取れる', (t) => {
+  const repo = makeRepo(t, 'issue67-foo');
+  put(repo, 'handover-20261020-1000-issue66.md');
+  const mine = put(repo, 'handover-20261020-0900-issue67.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-20 09:00）`), r.stdout);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: issue67-foo、Issue: #67）`), r.stdout);
+  assert.ok(!r.stdout.includes('注意:'), r.stdout);
+});
+
+test('ブランチ名: tissue-5 は issue の直前が英小文字なので番号なし扱い（E3）', (t) => {
+  const repo = makeRepo(t, 'tissue-5');
+  put(repo, 'handover-20261016-1030-issue5.md');
+  const newer = put(repo, 'handover-20261017-1653-issue8.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${newer}（作成: 2026-10-17 16:53）`), r.stdout);
+  assert.ok(r.lines.includes(NOTE_E3), r.stdout);
+  assert.ok(!r.stdout.includes('Issue #5 の引継書は無く'), r.stdout);
+});
+
+test('ブランチ名: issue が複数あれば最初の番号を採用する（issue6 の引継書があればそれを選ぶ）', (t) => {
+  const repo = makeRepo(t, 'feature/issue-6-and-issue-67');
+  put(repo, 'handover-20261020-1000-issue67.md');
+  const mine = put(repo, 'handover-20261019-0900-issue6.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-19 09:00）`), r.stdout);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: feature/issue-6-and-issue-67、Issue: #6）`), r.stdout);
+  assert.ok(!r.stdout.includes('注意:'), r.stdout);
+});
+
+test('ブランチ名: issue が複数で最初の番号の引継書が無ければ #6 の注意書き（E2）', (t) => {
+  const repo = makeRepo(t, 'feature/issue-6-and-issue-67');
+  const other = put(repo, 'handover-20261020-1000-issue67.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${other}（作成: 2026-10-20 10:00）`), r.stdout);
+  assert.ok(r.lines.includes('注意: ブランチの Issue #6 の引継書は無く、別 Issue のものです。'), r.stdout);
+});
+
+test('フェーズ行: 行頭が「- 直前フェーズ:」の行だけを拾い、本文中の語は拾わない', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', [
+    '# 引継書',
+    '',
+    'メモ: ここで 直前フェーズ: bogus-prev と 次フェーズ: bogus-next が文中に出る。',
+    '',
+    '- 直前フェーズ: real-prev',
+    '- 次フェーズ: real-next',
+    '',
+  ].join('\n'));
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes('直前フェーズ: real-prev'), r.stdout);
+  assert.ok(r.lines.includes('次フェーズ: real-next'), r.stdout);
+  assert.ok(!r.stdout.includes('bogus'), `文中の語を拾っている:\n${r.stdout}`);
+});
+
+test('フェーズ行: 行頭固定なので、行頭が「- 」でない記述しか無ければ行を出さない', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', [
+    '# 引継書',
+    '',
+    '説明の途中で 直前フェーズ: bogus-prev と 次フェーズ: bogus-next に触れるだけ。',
+    '',
+  ].join('\n'));
+  const r = run(t, clear(repo));
+  assert.ok(r.stdout.includes(HEADING), r.stdout);
+  assert.ok(!r.stdout.includes('直前フェーズ'), r.stdout);
+  assert.ok(!r.stdout.includes('次フェーズ'), r.stdout);
+});
+
+test('フェーズ行: 値が空の行は無視し、後ろの値のある同種の行を使う', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', [
+    '# 引継書',
+    '- 直前フェーズ:',
+    '- 次フェーズ:    ',
+    '',
+    '- 直前フェーズ: later-prev',
+    '- 次フェーズ: later-next',
+    '',
+  ].join('\n'));
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes('直前フェーズ: later-prev'), r.stdout);
+  assert.ok(r.lines.includes('次フェーズ: later-next'), r.stdout);
+});
+
+test('フェーズ行: どれも空なら行を出さない', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', '# 引継書\n- 直前フェーズ:\n- 次フェーズ:   \n');
+  const r = run(t, clear(repo));
+  assert.ok(r.stdout.includes(HEADING), r.stdout);
+  assert.ok(!r.stdout.includes('直前フェーズ'), r.stdout);
+  assert.ok(!r.stdout.includes('次フェーズ'), r.stdout);
+});
+
+test('フェーズ行: CRLF の引継書でも出力に CR を含めない', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', '# 引継書\r\n- 直前フェーズ: plan\r\n- 次フェーズ: setup\r\n');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes('直前フェーズ: plan'), JSON.stringify(r.stdout));
+  assert.ok(r.lines.includes('次フェーズ: setup'), JSON.stringify(r.stdout));
+  assert.ok(!r.stdout.includes('\r'), JSON.stringify(r.stdout));
+});
+
+test('フェーズ行: 値は先頭200文字までに切る（3000文字の値が全量出ない）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', `# 引継書\n- 直前フェーズ: ${'x'.repeat(3000)}\n- 次フェーズ: setup\n`);
+  const r = run(t, clear(repo));
+  const line = r.lines.find((l) => l.startsWith('直前フェーズ:'));
+  assert.ok(line, `行が無い:\n${r.stdout.slice(0, 500)}`);
+  assert.ok([...line].length <= 200 + '直前フェーズ: '.length, `長すぎる: ${[...line].length} 文字`);
+  assert.ok(line.includes('x'.repeat(100)), '先頭部分は残っている');
+  assert.ok(r.stdout.length < 1500, `出力全体が長い: ${r.stdout.length}`);
+});
+
+test('サブディレクトリ: cwd が <repo>/src/deep でもリポジトリ直下の .agent/ から選ぶ', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  put(repo, 'handover-20261020-1000-issue66.md');
+  const mine = put(repo, 'handover-20261020-0900-issue67.md');
+  const deep = path.join(repo, 'src', 'deep');
+  fs.mkdirSync(deep, { recursive: true });
+  const r = run(t, clear(deep));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-20 09:00）`), r.stdout);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: issue-67-clear-inject、Issue: #67）`), r.stdout);
+  assert.ok(!r.stdout.includes('注意:'), r.stdout);
+});
+
+test('git リポジトリでない cwd では従来どおり cwd の .agent/ を見る', (t) => {
+  const dir = mkdtemp(t, 'clear-handover-inject-nogit-');
+  fs.mkdirSync(path.join(dir, '.agent'));
+  const mine = put(dir, 'handover-20261020-0900-issue67.md');
+  const r = run(t, clear(dir));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-20 09:00）`), r.stdout);
+});
+
+test('日付のみのファイル名（時刻なし）は「（作成: 2026-10-20）」と出す', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const mine = put(repo, 'handover-20261020-issue67.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-20）`), r.stdout);
+});
+
+test('日付なしのファイル名は「（作成: …）」を付けず「引継書: <パス>」だけ', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const mine = put(repo, 'handover-issue67.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${mine}`), r.stdout);
+  assert.ok(!r.stdout.includes('作成:'), r.stdout);
+});
+
+test('hooks.json: clear エントリが参照する hook スクリプトが実在し、bash -n で構文エラーが無い', () => {
+  const entry = sessionStart().find((e) => e.matcher === 'clear');
+  assert.ok(entry, 'clear エントリがある');
+  const cmd = commandsOf(entry).find((c) => c.includes('clear-handover-inject.sh'));
+  assert.ok(cmd, 'clear-handover-inject.sh を呼ぶ command がある');
+  assert.ok(cmd.includes('${CLAUDE_PLUGIN_ROOT}/hooks/clear-handover-inject.sh'), cmd);
+  const script = path.join(path.join(__dirname, '..'), 'hooks', 'clear-handover-inject.sh');
+  assert.ok(fs.existsSync(script), `スクリプトが無い: ${script}`);
+  const r = spawnSync('bash', ['-n', script], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `bash -n 失敗:\n${r.stderr}`);
+});
