@@ -520,3 +520,45 @@ test('切り詰め: UTF-8 ロケールが無い OS（locale -a が C / POSIX の
   // 比較: 偽の locale を使わない通常実行でも 1〜200 文字になる
   assertValidUtf8CutAt200(t, {});
 });
+
+// 日本語300文字だけだと 600 バイトがちょうど文字境界（3バイト x 200）に揃い、不完全な末尾の除去を
+// 外しても落ちない。先頭に 1 / 2 バイトの文字を付け、4 バイト文字を混ぜて、文字の途中で切れる入力にする。
+function assertCutOnCharBoundary(t, input, envOverride) {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  putRaw(repo, 'handover-20261020-0900-issue67.md', `# 引継書\n- 直前フェーズ: ${input}\n- 次フェーズ: ${input}\n`);
+  const r = runBytes(t, clear(repo), envOverride);
+  assert.equal(r.status, 0);
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(r.buf);
+  } catch (e) {
+    assert.fail(`出力が妥当な UTF-8 ではない（入力 ${JSON.stringify(input.slice(0, 4))}…）: ${e.message}`);
+  }
+  assert.ok(!text.includes('�'), 'U+FFFD を含まない');
+  const chars = [...input];
+  for (const label of ['直前フェーズ: ', '次フェーズ: ']) {
+    const line = text.split('\n').find((l) => l.startsWith(label));
+    assert.ok(line, `${label}の行が無い:\n${text.slice(0, 500)}`);
+    const value = line.slice(label.length);
+    const n = [...value].length;
+    assert.ok(n >= 1 && n <= 200, `${label}の値の文字数が 1〜200 でない: ${n}`);
+    assert.equal(value, chars.slice(0, n).join(''), `${label}の値が入力の先頭部分になっていない`);
+  }
+}
+
+test('切り詰め: 文字の途中でバイト切りが起きる入力（1・2・4バイト文字が混在）でも、UTF-8 ロケール無しで妥当な UTF-8 に切れる', (t) => {
+  const jp = '日本語'.repeat(100);
+  const inputs = [
+    `a${jp}`, // 600 バイトで日本語の途中（2バイト）になる
+    `é${jp}`, // 2バイト文字が先頭
+    `${'日本語'.repeat(50)}${'😀'.repeat(100)}`, // 600 バイトで絵文字の途中（2バイト）になる
+  ];
+  const fakeBin = mkdtemp(t, 'clear-handover-inject-fakelocale-');
+  const fake = path.join(fakeBin, 'locale');
+  fs.writeFileSync(fake, "#!/bin/sh\nprintf 'C\\nPOSIX\\n'\n");
+  fs.chmodSync(fake, 0o755);
+  for (const input of inputs) {
+    assertCutOnCharBoundary(t, input, { PATH: `${fakeBin}${path.delimiter}${GIT_ENV.PATH}` });
+    assertCutOnCharBoundary(t, input, {});
+  }
+});
