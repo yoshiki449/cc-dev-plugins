@@ -758,3 +758,94 @@ test('未コミットの編集: 対照 — クリーンな追跡の引継書（W
   const r = run(t, clear(repo));
   assert.ok(r.lines.includes(staleLine(3, hash, '2026-10-20 14:02 +0900')), r.stdout);
 });
+
+// ---- 鮮度警告: 時間制限と、未固定だった分岐（Issue #67）----
+
+/** 指定の committer date / author date でコミットする（二つを別々に決めたいとき用）。 */
+function commitWithDates(repo, subject, authorIso, committerIso) {
+  git(repo, ['commit', '--allow-empty', '-q', '-m', subject], { ...COMMIT_ENV, GIT_AUTHOR_DATE: authorIso, GIT_COMMITTER_DATE: committerIso });
+}
+
+test('時間制限: git の log / rev-list が極端に遅くても 15 秒以内に終わり、注入全体は失われず、鮮度警告だけが出ない', { timeout: 30000 }, (t) => {
+  const { repo } = repoWithTrackedHandover(t, 3);
+  const realGit = execFileSync('bash', ['-c', 'command -v git'], { env: GIT_ENV, encoding: 'utf8' }).trim();
+  const fakeDir = mkdtemp(t, 'clear-handover-inject-fakegit-');
+  const fake = [
+    '#!/bin/bash',
+    'for a in "$@"; do',
+    '  case "$a" in log|rev-list) sleep 60; break ;; esac',
+    'done',
+    `exec "${realGit}" "$@"`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(fakeDir, 'git'), fake, { mode: 0o755 });
+  const elsewhere = mkdtemp(t, 'clear-handover-inject-elsewhere-');
+  const started = Date.now();
+  const r = spawnSync('bash', [HOOK], {
+    cwd: elsewhere,
+    input: JSON.stringify(clear(repo)),
+    env: { ...GIT_ENV, PATH: `${fakeDir}:${GIT_ENV.PATH}` },
+    encoding: 'utf8',
+    timeout: 25000,
+  });
+  const elapsed = Date.now() - started;
+  const out = r.stdout || '';
+  const lines = out.split('\n');
+  assert.ok(elapsed < 15000, `15 秒以内に終わらなかった: ${elapsed}ms`);
+  assert.equal(r.status, 0, `status=${r.status} signal=${r.signal}`);
+  assert.ok(out.includes(HEADING), `見出しが無い:\n${out}`);
+  assert.ok(lines.some((l) => l.startsWith('引継書: ')), `引継書行が無い:\n${out}`);
+  assert.ok(lines.includes(CLOSING), `定型文が無い:\n${out}`);
+  assert.ok(!out.includes(STALE_MARK), `鮮度警告が出ている:\n${out}`);
+});
+
+test('クリーンな追跡済み引継書は、他のファイルが未コミットでもコミット基準（mtime が最新でも 3 件）', (t) => {
+  const { repo, p } = repoWithTrackedHandover(t, 3);
+  fs.writeFileSync(path.join(repo, 'other-file.txt'), 'uncommitted\n');
+  assert.ok(git(repo, ['status', '--porcelain']).length > 0, '前提: リポジトリ全体は dirty');
+  setMtime(p, epoch('2026-10-21T00:00:00+0900'));
+  const hash = git(repo, ['rev-parse', '--short', 'HEAD']);
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(staleLine(3, hash, '2026-10-20 14:02 +0900')), `期待 3 件:\n${r.stdout}`);
+});
+
+test('未コミットの編集あり: 追跡済みでも mtime（12:15）より厳密に新しい 2 件（追加コミット以降の 3 件ではない）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const name = 'handover-20261020-0900-issue67.md';
+  const p = put(repo, name);
+  commitAt(repo, 'before', '2026-10-20T11:00:00+0900');
+  commitHandover(repo, name, 'add handover', '2026-10-20T12:00:00+0900');
+  commitAt(repo, 'older than mtime', '2026-10-20T12:10:00+0900');
+  commitAt(repo, 'after 1', '2026-10-20T12:30:00+0900');
+  commitAt(repo, 'after 2', '2026-10-20T13:00:00+0900');
+  fs.writeFileSync(p, handoverBody({ prev: 'implement', next: 'review' }));
+  setMtime(p, epoch('2026-10-20T12:15:00+0900'));
+  const hash = git(repo, ['rev-parse', '--short', 'HEAD']);
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes('直前フェーズ: implement'), `書き換えた引継書が読まれている:\n${r.stdout}`);
+  assert.ok(r.lines.includes(staleLine(2, hash, '2026-10-20 13:00 +0900')), `期待 2 件:\n${r.stdout}`);
+});
+
+test('committer date を使う: 追跡済みの警告の日時は author date（10:00）ではなく committer date（14:02）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const name = 'handover-20261020-0900-issue67.md';
+  put(repo, name);
+  commitHandover(repo, name, 'handover', '2026-10-20T09:00:00+0900');
+  commitWithDates(repo, 'work', '2026-10-20T10:00:00+0900', '2026-10-20T14:02:00+0900');
+  const hash = git(repo, ['rev-parse', '--short', 'HEAD']);
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(staleLine(1, hash, '2026-10-20 14:02 +0900')), `期待 committer date:\n${r.stdout}`);
+});
+
+test('committer date を使う: 未追跡の引継書（mtime 12:00）は、author date が古くても committer date が新しいコミットを 1 件と数える', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const p = put(repo, 'handover-20261020-0900-issue67.md');
+  setMtime(p, epoch('2026-10-20T12:00:00+0900'));
+  commitAt(repo, 'before', '2026-10-20T11:00:00+0900');
+  commitWithDates(repo, 'work', '2026-10-20T10:00:00+0900', '2026-10-20T14:02:00+0900');
+  const hash = git(repo, ['rev-parse', '--short', 'HEAD']);
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(staleLine(1, hash, '2026-10-20 14:02 +0900')), `期待 1 件:\n${r.stdout}`);
+});
