@@ -107,6 +107,33 @@ if [ -n "$WORKPATH" ]; then
   [ -n "$DETAIL" ] && WORKPLACE="$WORKPLACE（$DETAIL）"
 fi
 
+# 鮮度警告: 引継書より後のコミット数。件名は出さない（他者が書ける文字列を混ぜない）。
+# 追跡済みでクリーン → 最後に変更したコミット B の B..HEAD。それ以外 → mtime より厳密に新しい committer date。
+# git の失敗では止めない（失敗したら警告なし）。外部入力は引数として渡し、評価しない。
+STALE=""
+stale_count() {
+  local base mtime
+  git -C "$CWD" rev-parse --verify -q HEAD >/dev/null 2>&1 || return 0
+  if git -C "$CWD" ls-files --error-unmatch -- "$REL" >/dev/null 2>&1 \
+     && [ -z "$(git -C "$CWD" status --porcelain -- "$REL" 2>/dev/null)" ]; then
+    base=$(git -C "$CWD" log -1 --format=%H -- "$REL" 2>/dev/null)
+    [ -n "$base" ] || return 0
+    git -C "$CWD" rev-list --count "$base..HEAD" 2>/dev/null
+  else
+    mtime=$(stat -c %Y "$HANDOVER" 2>/dev/null || stat -f %m "$HANDOVER" 2>/dev/null)
+    [[ $mtime =~ ^[0-9]+$ ]] || return 0
+    git -C "$CWD" log --format=%ct HEAD 2>/dev/null | awk -v m="$mtime" '$1 > m { n++ } END { print n + 0 }'
+  fi
+}
+STALE_N=$(stale_count)
+if [[ $STALE_N =~ ^[0-9]+$ ]] && [ "$STALE_N" -gt 0 ]; then
+  STALE_HASH=$(git -C "$CWD" rev-parse --short HEAD 2>/dev/null)
+  STALE_WHEN=$(git -C "$CWD" log -1 --format=%cd --date="format:%Y-%m-%d %H:%M %z" HEAD 2>/dev/null)
+  if [ -n "$STALE_HASH" ] && [ -n "$STALE_WHEN" ]; then
+    STALE="注意: この引継書の後に $STALE_N 件のコミットがある（最新: $STALE_HASH、$STALE_WHEN）。引継書が現状を反映していない可能性があるので、git log で確かめること。"
+  fi
+fi
+
 echo "## 前回フェーズの引継書（/clear 後の自動注入）"
 if [ -n "$CREATED" ]; then
   echo "引継書: $HANDOVER（作成: $CREATED）"
@@ -114,6 +141,7 @@ else
   echo "引継書: $HANDOVER"
 fi
 [ -n "$NOTE" ] && echo "$NOTE"
+[ -n "$STALE" ] && echo "$STALE"
 [ -n "$PREV" ] && echo "$PREV"
 [ -n "$NEXT" ] && echo "$NEXT"
 [ -n "$WORKPLACE" ] && echo "$WORKPLACE"
