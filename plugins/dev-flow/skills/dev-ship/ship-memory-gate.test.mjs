@@ -56,3 +56,10 @@ test('E7 の終了メッセージが飛ばした場合の報告を持つ', () =>
   const e7 = md.slice(pos('### E7.'));
   assert.match(e7.split('\n').slice(0, 3).join('\n'), /飛ばしたものとその理由/);
 });
+
+test('E4 の memory_store は tags に issue-<Issue番号> を必ず入れる（Issue #67）', () => {
+  const { text, index } = gate('ship-memory-tags');
+  assert.ok(pos('### E4.') < index && index < pos('### E5.'), 'タグの指示が E4 の中に無い');
+  assert.ok(text.startsWith('`memory_store` の `tags` には `issue-<Issue番号>` を必ず入れる'), text);
+  assert.doesNotMatch(text, /任意|省略可|あれば/, 'タグを任意に読み替える語を含めない');
+});

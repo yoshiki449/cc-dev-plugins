@@ -246,3 +246,49 @@ test('AC17: .md 以外の拡張子（エディタのバックアップ等）は�
   assert.equal(r.status, 0);
   assert.equal(r.stdout, '.agent/handover-20260820-1738-issue259.md\n');
 });
+
+// ---- Issue #67: 第2引数（Issue 番号）で対象を絞る ----
+
+function runIssue(dir, issue) {
+  const r = spawnSync('bash', [SCRIPT, dir, issue], { cwd: os.tmpdir(), encoding: 'utf8' });
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr, name: r.stdout.trim() ? path.basename(r.stdout.trim()) : '' };
+}
+
+test('AC18: 第2引数の Issue 番号に一致する引継書だけから最新を返す（日付は他 Issue の方が新しい）', () => {
+  const dir = fixture([
+    'handover-20261020-1000-issue66.md',
+    'handover-20261020-0900-issue67.md',
+    'handover-20261019-0900-issue67.md',
+  ]);
+  const r = runIssue(dir, '67');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '.agent/handover-20261020-0900-issue67.md\n');
+});
+
+test('AC19: issue6 の指定は issue67 に一致しない（両方あっても 6 だけが返る）', () => {
+  const dir = fixture([
+    'handover-20261020-1000-issue67.md', // 日付は新しいが対象外
+    'handover-20261019-0900-issue6.md',
+  ]);
+  assert.equal(runIssue(dir, '6').name, 'handover-20261019-0900-issue6.md');
+  assert.equal(runIssue(dir, '67').name, 'handover-20261020-1000-issue67.md');
+});
+
+test('AC20: 該当する Issue の引継書が無ければ空文字・exit 0', () => {
+  const dir = fixture(['handover-20261020-1000-issue66.md']);
+  const r = runIssue(dir, '67');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), '');
+});
+
+test('AC21: 第2引数の絞り込みでも日付つきが日付なしに勝つ', () => {
+  const dir = fixture(['handover-issue67.md', 'handover-20261020-0900-issue67.md', 'handover-20261021-0900-issue66.md']);
+  setMtime(dir, 'handover-20261020-0900-issue67.md', 1000000);
+  setMtime(dir, 'handover-issue67.md', 3000000);
+  assert.equal(runIssue(dir, '67').name, 'handover-20261020-0900-issue67.md');
+});
+
+test('AC22: 第2引数を省略した従来の呼び出しは絞り込まない', () => {
+  const dir = fixture(['handover-20261020-1000-issue66.md', 'handover-20261020-0900-issue67.md']);
+  assert.equal(run(dir).name, 'handover-20261020-1000-issue66.md');
+});

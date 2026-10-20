@@ -1,0 +1,296 @@
+#!/usr/bin/env node
+'use strict';
+
+// clear-handover-inject.sh（/clear 後の引継書要約の自動注入）のテスト。Issue #67。
+// 実行: node --test plugins/dev-flow/hooks/clear-handover-inject.test.js
+//
+// SessionStart の source が clear のときだけ、stdin の cwd の .agent/handover-*.md から
+// 1件を選んで要約を標準出力へ出す。選び方はブランチ名の issue<N> を優先し、
+// 無ければ全体の最新＋注意書き。終了コードは常に 0（セッション開始を止めない）。
+// 「最新」はファイル名の日付で決める。mtime には頼らない（E1 / E4 で mtime を逆順にして固定する）。
+
+const test = require('node:test');
+const assert = require('node:assert');
+const { spawnSync, execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const HOOK = path.join(__dirname, 'clear-handover-inject.sh');
+const HOOKS_JSON = path.join(__dirname, 'hooks.json');
+
+const GIT_ENV = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_SYSTEM: '/dev/null',
+};
+
+const HEADING = '## 前回フェーズの引継書（/clear 後の自動注入）';
+const CLOSING = '状況を答える前に、この引継書を読むこと。貼られた再開プロンプトに引継書のパスがあれば、そちらを優先する。';
+const BODY_MARKER = 'BODY-ONLY-MARKER-7f3a9c';
+
+function mkdtemp(t, prefix) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return fs.realpathSync(dir);
+}
+
+/** git init -b <branch> したリポジトリ。コミットは不要。 */
+function makeRepo(t, branch) {
+  const dir = mkdtemp(t, 'clear-handover-inject-');
+  execFileSync('git', ['init', '-q', '-b', branch], { cwd: dir, env: GIT_ENV });
+  fs.mkdirSync(path.join(dir, '.agent'));
+  return dir;
+}
+
+function handoverBody({ prev = 'plan', next = 'setup', worktree } = {}) {
+  const lines = ['# 引継書', ''];
+  if (prev) lines.push(`- 直前フェーズ: ${prev}`);
+  if (next) lines.push(`- 次フェーズ: ${next}`);
+  if (worktree) lines.push(`- **worktree 絶対パス**: \`${worktree}\``);
+  lines.push('', BODY_MARKER, '');
+  return lines.join('\n');
+}
+
+function put(repo, name, opts = {}) {
+  const p = path.join(repo, '.agent', name);
+  fs.writeFileSync(p, handoverBody(opts));
+  return p;
+}
+
+function setMtime(p, epochSec) {
+  fs.utimesSync(p, epochSec, epochSec);
+}
+
+/** プロセスの cwd は無関係なディレクトリにし、stdin の cwd だけが頼りになるようにする。 */
+function run(t, payload, { raw } = {}) {
+  const elsewhere = mkdtemp(t, 'clear-handover-inject-elsewhere-');
+  const input = raw !== undefined ? raw : JSON.stringify(payload);
+  const r = spawnSync('bash', [HOOK], { cwd: elsewhere, input, env: GIT_ENV, encoding: 'utf8' });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '', lines: (r.stdout || '').split('\n') };
+}
+
+const clear = (cwd) => ({ source: 'clear', cwd });
+
+const NOTE_E2 = '注意: ブランチの Issue #67 の引継書は無く、別 Issue のものです。';
+const NOTE_E3 = '注意: ブランチ名から Issue を特定できないため、別 Issue の引継書の可能性があります。';
+
+test('E1: ブランチの Issue の引継書を、日付が新しい別 Issue より優先して注入する（mtime は逆順）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const other = put(repo, 'handover-20261020-1000-issue66.md', { prev: 'ship', next: 'done' });
+  const mine = put(repo, 'handover-20261020-0900-issue67.md');
+  // 日付は issue66 が新しいが、mtime は issue67 の方を新しくする。
+  setMtime(other, 1000000);
+  setMtime(mine, 3000000);
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  const expected = [
+    HEADING,
+    `引継書: ${mine}（作成: 2026-10-20 09:00）`,
+    '直前フェーズ: plan',
+    '次フェーズ: setup',
+    `作業場所: ${repo}（ブランチ: issue-67-clear-inject、Issue: #67）`,
+    CLOSING,
+  ];
+  const idx = expected.map((l) => r.lines.indexOf(l));
+  idx.forEach((i, n) => assert.ok(i >= 0, `行が無い: ${expected[n]}\n出力:\n${r.stdout}`));
+  assert.deepEqual(idx, [...idx].sort((a, b) => a - b), '行の順序が仕様どおり');
+  assert.ok(!r.stdout.includes('注意:'), '該当ありのときは注意書きを出さない');
+  assert.ok(!r.stdout.includes('issue66'), '別 Issue の引継書を出さない');
+  assert.ok(!r.stdout.includes('直前フェーズ: ship'), '別 Issue の引継書の中身を出さない');
+});
+
+test('E1: 引継書の全文は注入しない（本文にだけ書いた目印が出力に無い）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  put(repo, 'handover-20261020-0900-issue67.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.stdout.includes(HEADING), '注入自体は行われている');
+  assert.ok(!r.stdout.includes(BODY_MARKER), `全文を出している:\n${r.stdout}`);
+});
+
+test('E1: feature/issue-67-x のようなスラッシュ入りブランチでも Issue #67 を取れる', (t) => {
+  const repo = makeRepo(t, 'feature/issue-67-x');
+  put(repo, 'handover-20261020-1000-issue66.md');
+  const mine = put(repo, 'handover-20261020-0900-issue67.md');
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-20 09:00）`), r.stdout);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: feature/issue-67-x、Issue: #67）`), r.stdout);
+  assert.ok(!r.stdout.includes('注意:'));
+});
+
+test('E1: issue6 のブランチは issue67 の引継書を選ばない（前方一致の取り違え防止）', (t) => {
+  const repo = makeRepo(t, 'issue-6-foo');
+  put(repo, 'handover-20261020-1000-issue67.md');
+  const mine = put(repo, 'handover-20261019-0900-issue6.md');
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-19 09:00）`), r.stdout);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: issue-6-foo、Issue: #6）`), r.stdout);
+});
+
+test('E2: ブランチの Issue の引継書が無ければ別 Issue の最新を注入し、注意書きを出す', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const other = put(repo, 'handover-20261020-1000-issue66.md');
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(`引継書: ${other}（作成: 2026-10-20 10:00）`), r.stdout);
+  assert.ok(r.lines.includes(NOTE_E2), `注意書きが無い:\n${r.stdout}`);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: issue-67-clear-inject、Issue: #66）`), '番号は選ばれた引継書のもの');
+  assert.ok(r.lines.indexOf(NOTE_E2) < r.lines.indexOf(CLOSING), '注意書きは定型文より前');
+  assert.ok(r.lines.includes(CLOSING));
+});
+
+test('E3: ブランチ名に番号が無ければ全体の最新（mtime ではなく日付）を注入し、注意書きを出す', (t) => {
+  const repo = makeRepo(t, 'feature-12');
+  const older = put(repo, 'handover-20261016-1030-issue12.md');
+  const newer = put(repo, 'handover-20261017-1653-issue8.md');
+  setMtime(newer, 1000000);
+  setMtime(older, 3000000);
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(`引継書: ${newer}（作成: 2026-10-17 16:53）`), r.stdout);
+  assert.ok(r.lines.includes(NOTE_E3), `注意書きが無い:\n${r.stdout}`);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: feature-12、Issue: #8）`), r.stdout);
+  assert.ok(!r.stdout.includes('Issue #12 の引継書は無く'), '番号ありの注意書きを混ぜない');
+});
+
+test('E4: 同じ Issue の引継書が複数なら日付が新しい方を注入する（mtime は逆順）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const older = put(repo, 'handover-20261020-0900-issue67.md');
+  const newer = put(repo, 'handover-20261020-1500-issue67.md');
+  setMtime(newer, 1000000);
+  setMtime(older, 3000000);
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`引継書: ${newer}（作成: 2026-10-20 15:00）`), r.stdout);
+  assert.ok(!r.stdout.includes('0900'), '古い方を出さない');
+  assert.ok(!r.stdout.includes('注意:'), '該当ありのときは注意書きを出さない');
+});
+
+test('E5: 引継書が1件も無ければ何も出力せず終了コード 0', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  fs.writeFileSync(path.join(repo, '.agent', 'knowledge.md'), 'x\n');
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+});
+
+test('E5: .agent/ 自体が無くても何も出力せず終了コード 0', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  fs.rmSync(path.join(repo, '.agent'), { recursive: true });
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+});
+
+test('E6: source が startup / resume / 欠落なら、引継書があっても何も出力しない', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  put(repo, 'handover-20261020-0900-issue67.md');
+  for (const payload of [
+    { source: 'startup', cwd: repo },
+    { source: 'resume', cwd: repo },
+    { cwd: repo },
+  ]) {
+    const r = run(t, payload);
+    assert.equal(r.status, 0, JSON.stringify(payload));
+    assert.equal(r.stdout, '', `出力してはいけない: ${JSON.stringify(payload)}`);
+  }
+  // 対照: clear なら同じ構成で出力される（無出力が「引継書が読めない」ことの偽陽性でない）
+  assert.ok(run(t, clear(repo)).stdout.includes(HEADING));
+});
+
+test('E7: 引継書に直前・次フェーズの行が無ければ、その行を出さずパスと作業場所だけを出す', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const mine = put(repo, 'handover-20261020-0900-issue67.md', { prev: null, next: null });
+  const r = run(t, clear(repo));
+  assert.equal(r.status, 0);
+  assert.ok(r.lines.includes(`引継書: ${mine}（作成: 2026-10-20 09:00）`), r.stdout);
+  assert.ok(r.lines.includes(`作業場所: ${repo}（ブランチ: issue-67-clear-inject、Issue: #67）`), r.stdout);
+  assert.ok(!r.stdout.includes('直前フェーズ'), `推測で埋めない:\n${r.stdout}`);
+  assert.ok(!r.stdout.includes('次フェーズ'), `推測で埋めない:\n${r.stdout}`);
+});
+
+test('E7: 片方の行だけある引継書は、ある方だけを出す', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  put(repo, 'handover-20261020-0900-issue67.md', { prev: 'implement', next: null });
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes('直前フェーズ: implement'), r.stdout);
+  assert.ok(!r.stdout.includes('次フェーズ'), r.stdout);
+});
+
+test('ストーリー2: 注入文の末尾に「状況を答える前に引継書を読む」定型文が必ず付く', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  put(repo, 'handover-20261020-0900-issue67.md');
+  const r = run(t, clear(repo));
+  assert.equal(r.lines.filter((l) => l !== '').pop(), CLOSING, '定型文が最後の行');
+});
+
+test('作業場所: 引継書に worktree 絶対パスの欄があればそのパスを使う', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const wt = '/example/worktrees/issue-67';
+  put(repo, 'handover-20261020-0900-issue67.md', { worktree: wt });
+  const r = run(t, clear(repo));
+  assert.ok(r.lines.includes(`作業場所: ${wt}（ブランチ: issue-67-clear-inject、Issue: #67）`), r.stdout);
+});
+
+test('cwd は stdin の値を使う（プロセスの cwd や引継書の無い別リポジトリを見ない）', (t) => {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  put(repo, 'handover-20261020-0900-issue67.md');
+  const empty = makeRepo(t, 'main'); // 引継書の無いリポジトリがプロセス cwd
+  const r = spawnSync('bash', [HOOK], {
+    cwd: empty,
+    input: JSON.stringify(clear(repo)),
+    env: GIT_ENV,
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0);
+  assert.ok(r.stdout.includes(path.join(repo, '.agent', 'handover-20261020-0900-issue67.md')), r.stdout);
+});
+
+test('壊れた JSON / 空の stdin でも何も出さず終了コード 0', (t) => {
+  for (const raw of ['{not json', '', 'null']) {
+    const r = run(t, null, { raw });
+    assert.equal(r.status, 0, `raw=${JSON.stringify(raw)}`);
+    assert.equal(r.stdout, '', `raw=${JSON.stringify(raw)}`);
+  }
+});
+
+test('cwd が存在しないパスでも何も出さず終了コード 0', (t) => {
+  const r = run(t, clear('/nonexistent/clear-handover-inject-test'));
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+});
+
+// ---- hooks.json の契約 ----
+
+const hooksRaw = fs.existsSync(HOOKS_JSON) ? fs.readFileSync(HOOKS_JSON, 'utf8') : '';
+const sessionStart = () => {
+  const j = JSON.parse(hooksRaw);
+  const entries = j.hooks && j.hooks.SessionStart;
+  assert.ok(Array.isArray(entries), 'SessionStart のエントリが配列で存在する');
+  return entries;
+};
+const commandsOf = (entry) => (entry.hooks || []).map((h) => h.command || '');
+
+test('hooks.json: matcher がちょうど clear の SessionStart エントリが1つあり、clear-handover-inject.sh を指す', () => {
+  const clearEntries = sessionStart().filter((e) => e.matcher === 'clear');
+  assert.equal(clearEntries.length, 1);
+  const cmds = commandsOf(clearEntries[0]);
+  assert.ok(cmds.some((c) => c.includes('clear-handover-inject.sh')), JSON.stringify(cmds));
+});
+
+test('hooks.json: 既存の startup|resume エントリが残り、cloud-session-start.sh を指す', () => {
+  const entries = sessionStart().filter((e) => e.matcher === 'startup|resume');
+  assert.equal(entries.length, 1);
+  assert.ok(commandsOf(entries[0]).some((c) => c.includes('cloud-session-start.sh')));
+});
+
+test('hooks.json: startup|resume のエントリは clear-handover-inject.sh を呼ばない（E6）', () => {
+  const entry = sessionStart().find((e) => e.matcher === 'startup|resume');
+  assert.ok(entry);
+  assert.ok(!commandsOf(entry).some((c) => c.includes('clear-handover-inject.sh')));
+});
+
+test('hooks.json: session-context-inject.sh は登録しない（依頼者が検証中で外してある）', () => {
+  assert.ok(hooksRaw.length > 0, 'hooks.json が読める');
+  assert.ok(!hooksRaw.includes('session-context-inject.sh'));
+});
