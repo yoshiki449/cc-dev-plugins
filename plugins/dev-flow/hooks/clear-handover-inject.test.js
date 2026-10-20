@@ -509,3 +509,14 @@ test('切り詰め: POSIX ロケール（LANG=C LC_ALL=C）でも日本語300文
 test('切り詰め: 既定のロケールでも日本語300文字の値が妥当な UTF-8 で200文字以内に切れる', (t) => {
   assertValidUtf8CutAt200(t, {});
 });
+
+test('切り詰め: UTF-8 ロケールが無い OS（locale -a が C / POSIX のみ）でも妥当な UTF-8 で200文字以内に切れる', (t) => {
+  // macOS 等を再現する。PATH の先頭に偽の locale を置き、元の PATH は後ろに残す。
+  const fakeBin = mkdtemp(t, 'clear-handover-inject-fakelocale-');
+  const fake = path.join(fakeBin, 'locale');
+  fs.writeFileSync(fake, "#!/bin/sh\nprintf 'C\\nPOSIX\\n'\n");
+  fs.chmodSync(fake, 0o755);
+  assertValidUtf8CutAt200(t, { PATH: `${fakeBin}${path.delimiter}${GIT_ENV.PATH}` });
+  // 比較: 偽の locale を使わない通常実行でも 1〜200 文字になる
+  assertValidUtf8CutAt200(t, {});
+});
