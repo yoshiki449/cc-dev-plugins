@@ -6,7 +6,7 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 |---|---|
 | `reference/handover-template.md` | 引継書テンプレート（全フェーズ共通の骨格＋フェーズ固有セクション） |
 | `scripts/latest-handover.sh [dir] [issue]` | `.agent/handover-*.md` の最新ファイルパスを返す（判定は**ファイル名の日付**。日付を持たない引継書は除外して stderr に警告）。第2引数に Issue 番号を渡すと、ファイル名が `issue<番号>` の引継書だけから選ぶ（`issue6` は `issue67` に一致しない） |
-| `hooks/clear-handover-inject.sh`（plugin の `hooks/`） | SessionStart の `clear` で、最新の引継書の要約（パス・作成日時・直前/次フェーズ・作業場所・ブランチ・Issue）を自動で注入する。全文は入れない。ブランチ名の Issue の引継書を優先し、無ければ最新を注意書きつきで入れる。再開プロンプトを置き換えず並存する。`jq` が無い環境では何も注入しない（他の hook と同じ作法） |
+| `hooks/clear-handover-inject.sh`（plugin の `hooks/`） | SessionStart の `clear` で、最新の引継書の要約（パス・作成日時・直前/次フェーズ・作業場所・ブランチ・Issue）を自動で注入する。全文は入れない。ブランチ名の Issue の引継書を優先し、無ければ最新を注意書きつきで入れる。再開プロンプトを置き換えず並存する。引継書より後にコミットがあれば「N 件のコミットがある（最新: ハッシュ、日時）」の鮮度警告を足す（基準は、git で追跡され未コミットの編集が無ければ引継書を最後に変更したコミット、そうでなければファイルの更新時刻。コミットの件名は出さない）。`jq` が無い環境では何も注入しない（他の hook と同じ作法） |
 | `scripts/new-handover-path.sh [issue]` | 新規引継書パスを生成（衝突時はエラー） |
 | `scripts/resume-prompt.sh <次フェーズ> [引継書]` | `/clear` の後に貼る再開プロンプト（「/<次フェーズ> 引継書: <絶対パス>」＋作業場所）を出力。引継書を省略すると `latest-handover.sh` の結果を使う。消費者は「再開プロンプトの消費者」の表 |
 | `scripts/check-handover-secrets.sh <引継書>` | 引継書に資格情報らしい行（パスワード・トークン等の代入、Bearer、URL 埋め込み、既知の接頭辞、秘密鍵）が無いか走査する。検出した値は出力せず「ファイル:行番号: 種類」だけを返す（exit 1=検出あり）。引継書をリポジトリで共有するとき、コミットの前に使う |
