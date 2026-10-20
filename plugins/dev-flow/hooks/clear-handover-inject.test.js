@@ -465,3 +465,47 @@ test('hooks.json: clear エントリが参照する hook スクリプトが実�
   const r = spawnSync('bash', ['-n', script], { encoding: 'utf8' });
   assert.equal(r.status, 0, `bash -n 失敗:\n${r.stderr}`);
 });
+
+// ---- セルフレビュー指摘: 切り詰めはロケールに依存せず、妥当な UTF-8 を保つ（Issue #67）----
+
+/** 出力を Buffer のまま受け取る run。envOverride で LANG / LC_ALL などを上書きできる。 */
+function runBytes(t, payload, envOverride = {}) {
+  const elsewhere = mkdtemp(t, 'clear-handover-inject-elsewhere-');
+  const r = spawnSync('bash', [HOOK], {
+    cwd: elsewhere,
+    input: JSON.stringify(payload),
+    env: { ...GIT_ENV, ...envOverride },
+  });
+  return { status: r.status, buf: r.stdout || Buffer.alloc(0) };
+}
+
+function assertValidUtf8CutAt200(t, envOverride) {
+  const repo = makeRepo(t, 'issue-67-clear-inject');
+  const jp = '日本語'.repeat(100); // 300 文字（900 バイト）
+  putRaw(repo, 'handover-20261020-0900-issue67.md', `# 引継書\n- 直前フェーズ: ${jp}\n- 次フェーズ: ${jp}\n`);
+  const r = runBytes(t, clear(repo), envOverride);
+  assert.equal(r.status, 0);
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(r.buf);
+  } catch (e) {
+    assert.fail(`出力が妥当な UTF-8 ではない（文字の途中で切れている）: ${e.message}`);
+  }
+  assert.ok(!text.includes('�'), 'U+FFFD を含まない');
+  for (const label of ['直前フェーズ: ', '次フェーズ: ']) {
+    const line = text.split('\n').find((l) => l.startsWith(label));
+    assert.ok(line, `${label}の行が無い:\n${text.slice(0, 500)}`);
+    const value = line.slice(label.length);
+    const n = [...value].length;
+    assert.ok(n >= 1 && n <= 200, `${label}の値の文字数が 1〜200 でない: ${n}`);
+    assert.match(value, /^[日本語]+$/u, `${label}の値が先頭の連続した日本語だけでない: ${JSON.stringify(value)}`);
+  }
+}
+
+test('切り詰め: POSIX ロケール（LANG=C LC_ALL=C）でも日本語300文字の値が妥当な UTF-8 で200文字以内に切れる', (t) => {
+  assertValidUtf8CutAt200(t, { LANG: 'C', LC_ALL: 'C' });
+});
+
+test('切り詰め: 既定のロケールでも日本語300文字の値が妥当な UTF-8 で200文字以内に切れる', (t) => {
+  assertValidUtf8CutAt200(t, {});
+});
