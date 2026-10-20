@@ -372,6 +372,10 @@ E4・E6 の保存先は ai-memory の MCP で、クラウドセッションで�
 2. `memory_store` で作業サマリーを保存（category: context, importance: 3-4）。クラウドセッションでは作業ディレクトリからプロジェクトを割り出せないので、`project` にリポジトリ名を渡す
 3. 技術知見があれば別途保存（category: pattern, importance: 5-7）
 
+<!-- ship-memory-tags -->
+`memory_store` の `tags` には `issue-<Issue番号>` を必ず入れる（Issue 番号は引継書の「Issue:」行かブランチ名から取る）。次の会話が Issue 番号で記憶を引けるようにするため。
+<!-- /ship-memory-tags -->
+
 ### E5. 作業日報更新
 
 <!-- ship-worklog-gate -->

@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 # 最新の引継書ファイルパスを返す（無ければ空文字＋exit 0）
-# 使い方: latest-handover.sh [dir]
+# 使い方: latest-handover.sh [dir] [issue番号]
+#   issue番号を渡すと、ファイル名が issue<番号> で、その直後が数字でない引継書だけから選ぶ
+#   （issue6 の指定は issue67 に一致しない）。省略時は全体から選ぶ。
 set -euo pipefail
 
 cd "${1:-.}"
+ISSUE="${2:-}"
 
 shopt -s nullglob
 files=(.agent/handover-*.md)
 shopt -u nullglob
+
+if [ -n "$ISSUE" ]; then
+  filtered=()
+  for f in "${files[@]}"; do
+    if [[ ${f##*/} =~ issue${ISSUE}([^0-9]|$) ]]; then
+      filtered+=("$f")
+    fi
+  done
+  files=("${filtered[@]}")
+fi
 
 if [ ${#files[@]} -eq 0 ]; then
   exit 0
