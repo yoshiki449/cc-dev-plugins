@@ -33,6 +33,7 @@ bash $S down <repo>
 
 - `up` の前に `status` で `npm-*` / `playwright-*` が done になっているか見る（E2E を回すなら必要）
 - 失敗したら `~/.cloud-stack/<repo>/<処理名>.log` の末尾を読んでから次の手を決める
+- `up` は buildx bake の権限チェック（`BUILDX_BAKE_ENTITLEMENTS_FS`）を自分で切る。生成した Dockerfile は build context の外にあり、Compose v5 + buildx 0.38 は、これを読むのに `--allow=fs.read` を要求して止まるため（`additional privileges requested` で落ちたらこれ）。`COMPOSE_BAKE=false` は v5 では効かない
 - クラウドで MCP が使えるかは、`claude mcp list` の表示ではなく、ツールを実際に呼んで確かめる
 
 ## `.claude/cloud-stack.json` の書式

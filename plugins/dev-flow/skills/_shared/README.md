@@ -134,6 +134,17 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `dev-implement` | context-check | 「### Step 5: 引継書更新 ⚠ 必須（スキップ不可）」 |
 | `dev-verify` | context-check | 「### D7. 引継書更新 ⚠ 必須（スキップ不可）」 |
 
+## クラウドでの実スタック確認の消費者
+
+`reference/cloud-stack-first.md` の「正準の文」は、**各 SKILL.md に複製で置く**。クラウドセッションで実スタックを「立てられない」と書く前に、`cloud-stack.sh status` と `up --wait` を実行させる文。`scripts/cloud-stack-first.test.js` が表と実ファイルの両方を突き合わせる。**新しい消費者を足したらこの表にも足すこと**。
+
+節名は「」で囲む。
+
+| スキル | 節 |
+|---|---|
+| `dev-verify` | 「### D1. ローカル環境での動作確認」 |
+| `dev-qa` | 「### Q2. 環境確認」 |
+
 ## 再開プロンプトの消費者
 
 `reference/handover-template.md` の「再開プロンプト」節にある 2 つの文（`show`=フェーズ末尾で貼る文面を出す、`read`=フェーズ冒頭で貼られたパスを読む）は、**各 SKILL.md に複製で置く**。`scripts/resume-prompt-docs.test.js` が表と実ファイルの両方を突き合わせる。**新しい消費者を足したらこの表にも足すこと**。

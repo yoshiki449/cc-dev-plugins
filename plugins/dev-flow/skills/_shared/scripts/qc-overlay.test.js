@@ -305,6 +305,7 @@ test('AC19: 消費側 7 ファイルすべてが報告義務の正準1文を byt
 // allowlist にしておけば、ここに無いファイルが `_shared/reference/` に現れた時点で落ちる。
 const ALLOWED_REFERENCES = [
   'advisor-policy.md',
+  'cloud-stack-first.md',
   'core-flow.md',
   'handover-template.md',
   'qc-overlay.md',

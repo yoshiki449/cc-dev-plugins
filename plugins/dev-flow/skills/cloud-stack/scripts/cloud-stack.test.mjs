@@ -91,6 +91,7 @@ function makeWorld() {
     bin,
     'docker',
     `echo "docker $*" >> "${log}"
+case "$*" in *" up --build"*) echo "bake-fs=\${BUILDX_BAKE_ENTITLEMENTS_FS-unset} kind=build" >> "${log}" ;; *" up -d "*) echo "bake-fs=\${BUILDX_BAKE_ENTITLEMENTS_FS-unset} kind=restart" >> "${log}" ;; esac
 case "$*" in
   info*) [ ! -f "${stubs}/docker-down" ] ;;
   *" ps "*) [ -f "${stubs}/running" ] && echo api; exit 0 ;;
@@ -119,6 +120,8 @@ function run(world, args, { remote = 'true', ca = true, root } = {}) {
     CLOUD_STACK_HEALTH_INTERVAL: '0',
     CLAUDE_CODE_REMOTE: remote,
   };
+  // 呼び出し元の環境に値があると、スクリプトが自分で設定したかどうかを区別できない
+  delete env.BUILDX_BAKE_ENTITLEMENTS_FS;
   return spawnSync('bash', [SCRIPT, ...args], { cwd: os.tmpdir(), encoding: 'utf8', env });
 }
 
@@ -343,6 +346,20 @@ test('up は pre_up → ビルド → health → post_up の順に進み、完�
   const health = c.findIndex((x) => x.startsWith('curl ') && x.includes('http://localhost:9999/health'));
   assert.ok(up >= 0 && health > up);
   assert.ok(fs.existsSync(st(w, 'alpha', 'stack.done')));
+});
+
+// 生成した Dockerfile は build context の外（状態ディレクトリ）に置く。Compose v5 は常に buildx bake で
+// ビルドし、buildx 0.38 は context 外のファイルの読み取りに明示の許可を要求して止まる（実測）。
+// 使い捨て VM 内でしか使わないので、権限チェックをスクリプト側で切る
+test('up は context 外の生成 Dockerfile を読めるよう、ビルドと起こし直しの両方で bake の権限チェックを切る', () => {
+  const w = makeWorld();
+  makeRepo(w.root, 'alpha', manifest());
+  fs.writeFileSync(path.join(w.stubs, 'health-down'), '');
+  run(w, ['up', 'alpha', '--wait']);
+  const ups = calls(w).filter((c) => c.startsWith('bake-fs='));
+  assert.ok(ups.some((c) => c.endsWith(' kind=build')), 'ビルドの up が記録されていない');
+  assert.ok(ups.some((c) => c.endsWith(' kind=restart')), '起こし直しの up が記録されていない');
+  assert.ok(ups.every((c) => c.startsWith('bake-fs=0 ')), ups.join('\n'));
 });
 
 test('ビルドの間だけ各コンテキストに CA を置き、成功後に消し、クローンの除外に足す', () => {

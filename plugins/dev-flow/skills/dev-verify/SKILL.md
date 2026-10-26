@@ -52,6 +52,11 @@ overlay が無い環境では、セキュリティ検証（D4.5）と E2E だけ
 2. 実装済みファイル一覧、環境情報、ユーザー指示を確認
 
 ### D1. ローカル環境での動作確認
+
+<!-- cloud-stack-first -->
+- `CLAUDE_CODE_REMOTE=true`（クラウドセッション）では、実スタックを「立てられない」と判断する前に、`bash <skill-dir>/../cloud-stack/scripts/cloud-stack.sh status <repo>` で状態を見て、立っていなければ同 `up <repo> --wait` を実行する。引継書や記憶にある「docker が無い」「DB が無い」は写さず、この実行結果（成功したか、失敗ならログ末尾）を根拠にする。実行して失敗したときだけ、実行したコマンドと失敗の出力を添えて未実施として記録する。`cloud-stack.sh list` に出ないリポジトリ（`.claude/cloud-stack.json` が無い）は対象外
+<!-- /cloud-stack-first -->
+
 1. chrome-devtools MCP でブラウザを操作
 2. ログイン → 対象画面へ遷移 → 主要操作を実行
 3. コンソールエラー・ネットワークエラーを確認

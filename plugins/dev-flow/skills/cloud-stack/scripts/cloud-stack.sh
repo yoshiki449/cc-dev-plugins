@@ -222,6 +222,12 @@ task_stack() {
     # bash は TERM で終わるときも EXIT の trap を実行する。KILL は防げない
     trap 'rm -f "${CA_COPIES[@]}"' EXIT
     ensure_dockerd || { echo "dockerd が起動しない"; return 1; }
+    # 生成した Dockerfile は build context の外（状態ディレクトリ）にある。Compose v5 は常に buildx bake で
+    # ビルドし、buildx 0.38 は context 外のファイルの読み取りに --allow=fs.read を要求して止まる
+    # （実測: Compose 5.6.0 / buildx 0.38.0）。COMPOSE_BAKE=false は v5 では効かない。
+    # この VM は使い捨てでビルドするのも自分のリポジトリだけなので、権限チェックを切る。
+    # wait_health の起こし直し（イメージが無いときのビルド）も同じプロセスなので、ここで export すれば届く
+    export BUILDX_BAKE_ENTITLEMENTS_FS=0
     run_commands "$repo" '.compose.pre_up' || return 1
     prepare_ca_build "$repo" "$state" || return 1
     compose_args "$repo" "$state"
