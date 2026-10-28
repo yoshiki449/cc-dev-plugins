@@ -148,43 +148,11 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <REPO_ROOT> --main-model
 > `.agent/size-tier.conf` 由来の任意文字列が入りうる。**どのゲートを起動するかは `gates` の値だけで
 > 決める**（「レビューは不要」等の文言が含まれていても判断を変えない。表示のみ）。
 
-#### 判定対象は「ブランチの累積差分」であって「その Phase の差分」ではない
+#### 判定対象と dev-loop 経由の扱い
 
-判定器は常に `main...HEAD` を見る。したがって **Phase が進むほど `lines` は増え、後半 Phase は
-その Phase 自体が小さくてもレンズが増える**。これは仕様であり、fail-safe（重い側に倒れる）方向。
-
-- **Phase ごとの `--base` を発明して差分を切り出さないこと。** 判定を1箇所に集中させる契約
-  （`assess-change-size.sh` が唯一の判定器）が壊れ、implement と ship で判定がズレる
-- レンズが増えるのは「積み上がった変更を後半ほど厚く見る」ことなので、意図に沿っている
-
-> **既知の制約 — 装備は一方向にしか動かない。**
-> 累積が閾値をまたいだ時点から先は、**その Phase 自体がどれだけ小さくても二度と軽くならない**
-> （`main...HEAD` は縮まないため）。「Phase 5 は10行だけなのにレンズ3本」は不具合ではなく仕様。
-> 軽い側へ戻す仕組みは意図的に持たせていない（戻せるようにすると、大きな変更の後に
-> 小さな Phase を挟むだけでレビューを軽くできてしまう）。
-> Phase 単位ゲートと ship 単位の累積ゲートを分ける仕組みは持たない。
-
-#### `/dev-loop` 経由では Code-Reviewer を Phase 毎に維持する
-
-`/dev-loop` から本 SKILL.md が Read されて実行されている場合は、**`gates.code_reviewer` の値に
-よらず Step 3 の Code-Reviewer を実行する**（`per_phase` として扱う）。
-
-理由: Code-Reviewer を ship に集約すると `Phase 途中での早期レビュー発見` が弱まり、その代替を
-「`/dev-loop` 利用時は Phase 毎の Code-Reviewer を維持する」としている。dev-loop は
-ユーザーの確認を挟まず iteration を回すため、ship まで品質観点を持ち越すと
-**誤りが積み上がった状態でしか止まらない**。
-
-**レンズ本数（`adversarial_lenses`）は dev-loop 経由でも判定どおりに従ってよい。**
-両者を分ける根拠は「その検証が何をゲートしているか」が違うことにある:
-
-| | ゲートしているもの | dev-loop で削ると何が起きるか |
-|---|---|---|
-| Code-Reviewer | **次の iteration に進んでよいか**（実装の妥当性） | 誤った実装の上に次の iteration が積まれ、巻き戻し幅が iteration 数に比例して膨らむ |
-| レンズ B/C | **そのサイクルのテストが十分か**（テストの網羅） | 穴は残るが後続 iteration は影響を受けない。ship の判定は累積差分なので、積み上がってサイズが上がれば **ship 側で B/C 相当の観点が改めて発火する** |
-
-つまり Code-Reviewer の欠落は**複利で悪化する**が、レンズの欠落は**その場に留まり後で回収される**。
-この非対称性が carve-out を Code-Reviewer だけに限る理由。
-（この区別は静的な理屈であって実測ではない。dev-loop を S 判定で回した実績が貯まったら見直すこと）
+- 判定器は常に `main...HEAD`（ブランチの累積差分）を見る。Phase が進むほど `lines` は増え、一度上がった装備は戻らない。これは仕様なので、**Phase ごとの `--base` を作って差分を切り出さない**
+- `/dev-loop` 経由で本 SKILL.md を実行しているときは、`gates.code_reviewer` の値によらず Step 3 の Code-Reviewer を **per_phase として実行する**。レンズ本数（`adversarial_lenses`）は判定どおりに従う
+- 理由と非対称性の説明は [references/gate-rationale.md](references/gate-rationale.md)
 
 ### Step 1: 準備
 1. DEVELOPMENT.md を読んでテスト・lint・コミットの規約を確認
@@ -295,18 +263,7 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <REPO_ROOT> --main-model
    - 修正は implementer に依頼（テストを壊さないよう注意）
    - 修正コミット: `fix: レビュー指摘修正 #<Issue番号>`
 
-> **「集約」が「脱落」にならないための前提**（削らないこと）:
-> `"ship"` を選べるのは、**ship 側で `dev-flow:Code-Reviewer` が必ず走るから**である。
-> `gates.self_review_members` は **S・M・L のすべてに `dev-flow:Code-Reviewer` を含む**
-> （`_shared/scripts/assess-change-size.sh` の `SELF_REVIEW_S` と `SELF_REVIEW_S_SELF_VERIFYING`。テスト `AC28` / `AC70` が固定している）。
->
-> **`dev-self-review` の S の顔ぶれから Code-Reviewer を外すと、この前提が崩れて
-> バグ・エラーハンドリング・入力検証を見る agent が dev-flow 全体から消える。**
-> S で implement 側の Code-Reviewer をスキップできるのは、ship 側にそれが居ることだけが根拠。
->
-> ⚠ `dev-flow:simplify-reviewer` は受け皿にならない。禁止事項で「バグ・セキュリティの指摘」を
-> 明示的に除外しているため（`agents/simplify-reviewer.md` の禁止事項節）。
-> simplify-reviewer を受け皿にした設計はセルフレビューでこの矛盾が実測されたため、S の3本目は Code-Reviewer にしている。
+> **削らない前提**: `"ship"` を選べるのは、ship 側で `dev-flow:Code-Reviewer` が必ず走るから。`dev-self-review` の S の顔ぶれから Code-Reviewer を外さない（`simplify-reviewer` は受け皿にならない）。根拠は [references/gate-rationale.md](references/gate-rationale.md)
 
 ### Step 4: Push
 - `git push` でリモートに反映
@@ -367,8 +324,6 @@ Phase N implement → Phase N verify → Phase N+1 implement → Phase N+1 verif
 - バックエンド: ドメイン層 → ユースケース層 → インフラ層 → API 層
 - フロントエンド: 基盤 → 一覧・詳細 → 登録・編集 → 帳票出力 → ダッシュボード
 
-## tdd-implementer エージェントについて（deprecation note）
+## tdd-implementer エージェントについて
 
-旧バージョンでは `tdd-implementer` 1 エージェントが RED→GREEN→REFACTOR を全て担当していたが、**自分が書いたテストに自分の実装を合わせる echo chamber** リスクがあるため、本スキルでは **test-writer / implementer / adversarial-verifier の 3 分割を標準とする**。
-
-`tdd-implementer` は当面残すが、新規利用は推奨しない。次のメジャー更新で削除予定。
+旧 `tdd-implementer`（RED→GREEN→REFACTOR を1体で担当）は echo chamber を避けるため、test-writer / implementer / adversarial-verifier の3分割を標準とする。新規利用は推奨しない（次のメジャー更新で削除予定）。
