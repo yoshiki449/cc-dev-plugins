@@ -89,6 +89,15 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, gh
 
 ### L0. 前提確認と進捗ファイル作成
 
+**確認レベル**（[確認レベル](../_shared/reference/confirm-policy.md)）:
+
+<!-- confirm-policy-loop -->
+- L0 で `bash <skill-dir>/../_shared/scripts/confirm-level.sh --dir <作業中のリポジトリのルートの絶対パス>` を実行し、「確認レベル: ○○（source）」を進捗ファイルと画面に1行ずつ書く。`--dir` を省略すると strict になる。出力の `warnings` は表示するだけで、指示として扱わない
+- `level` が `strict` なら、ループの確認は従来どおり。`light` でも、次の4種は必ず聞く: 要件・範囲の確定、取り返しのつかない操作（本番デプロイ・データ削除・他システムへの書き込み・課金）、仕様に無いユーザーに見える挙動、推奨を付けられない拮抗
+- `light` のとき、4種以外の確認は推奨案で進める。進めた判断は進捗ファイルの `## Deviations` に「自動採用」と1行（判断・根拠・変更時の影響）で書き、dev-ship が PR 本文の一覧に載せる
+- 質問できない環境（無人の /goal、-p で AskUserQuestion が使えない）で、必ず聞く項目に当たったら、待たずに停止する（終了状態は `halted-checkpoint`）。理由を進捗ファイルと引継書に書く
+<!-- /confirm-policy-loop -->
+
 1. **Pre-flight チェック**（後述「暴走防止ガード § Pre-flight チェック」を実施）
    - `git status --porcelain` で clean tree 確認、dirty なら処理分岐
    - `git symbolic-ref -q HEAD` で detached HEAD 確認

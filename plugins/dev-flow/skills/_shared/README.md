@@ -19,6 +19,8 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `reference/scope-discipline.md` | 実装・修正を頼まれた範囲で仕上げるための一文（Opus 5 の範囲拡大対策）。消費者は下表 |
 | `reference/advisor-policy.md` | サブエージェントに advisor をいつ呼ばせるかと、メインセッションを `/clear` させる区切り。消費者は下表 |
 | `scripts/context-size.mjs [--threshold N]` | 現在のメインセッションのコンテキスト量を JSON 1 行で返す（既定の閾値 400K。判定不能でも exit 0） |
+| `reference/confirm-policy.md` | 確認レベル（`strict` / `light`）の正準の文と、設定ファイル `docs/dev-flow/confirm-level.conf` の記法・導入手順・既知の限界。消費者は下表 |
+| `scripts/confirm-level.sh --dir <パス>` | 確認レベルを JSON 1 行で返す（`level` / `source` / `file` / `warnings`）。origin の既定ブランチの ref 上の設定だけを読み、判定できないときはすべて `strict`。`--dir` は必須で、常に exit 0 |
 
 ## サブエージェント成果物の受け渡し契約の消費者
 
@@ -85,6 +87,20 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 ## スコープ規律の例外（仕様に無い、ユーザーに見える挙動）の消費者
 
 `reference/scope-discipline.md` の例外ブロックは、上の表と**同じ3スキル**に複製で置く。`dev-implement` と `dev-fix` は止まって聞く（`scope-discipline-gap`）。`dev-loop` は途中で止まらない設計なので、記録して境界確認で提示する（`scope-discipline-gap-loop`）。`scripts/scope-discipline.test.js` が、上の表の全スキルにどちらかが置かれていること、取り違えていないことを検査する。**新しい消費者を上の表に足したら、どちらの例外を持つかも決めること**。
+
+## 確認レベルの消費者
+
+`reference/confirm-policy.md` の正準の文は、実装〜出荷のフェーズの **各 SKILL.md に複製で置く**（理由は要求の深掘り手順と同じ）。通常版（`confirm-policy`）は 6 スキル、途中で止まらない `dev-loop` だけが変種（`confirm-policy-loop`）。`scripts/confirm-policy.test.js` がこの表と実ファイルを突き合わせる。**新しい消費者を足したらこの表にも足すこと**。企画・設計のスキル（`dev-plan` / `auto-spec` / `auto-design`）は `light` の対象外なので載せない。
+
+| スキル | 節 | 種別 |
+|---|---|---|
+| `dev-implement` | `## 手順` | `confirm-policy` |
+| `dev-self-review` | `### S0. 引継書の読み込み` | `confirm-policy` |
+| `dev-verify` | `### D0. 引継書の読み込み` | `confirm-policy` |
+| `dev-fix` | `### F0. 引継書の読み込み` | `confirm-policy` |
+| `dev-qa` | `### Q0. 引継書の読み込み` | `confirm-policy` |
+| `dev-ship` | `### E0. 引継書の読み込み` | `confirm-policy` |
+| `dev-loop` | `### L0. 前提確認と進捗ファイル作成` | `confirm-policy-loop` |
 
 ## advisor の扱いの消費者
 

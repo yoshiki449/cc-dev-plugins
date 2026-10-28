@@ -306,6 +306,7 @@ test('AC19: 消費側 7 ファイルすべてが報告義務の正準1文を byt
 const ALLOWED_REFERENCES = [
   'advisor-policy.md',
   'cloud-stack-first.md',
+  'confirm-policy.md',
   'core-flow.md',
   'handover-template.md',
   'qc-overlay.md',
