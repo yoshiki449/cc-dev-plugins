@@ -374,3 +374,227 @@ test('AC7d: worktree 側で書いた未マージの light 宣言は無視され�
   assert.equal(j.level, 'strict');
   assert.ok(warned(j, '未マージの light 宣言は無視'), JSON.stringify(j.warnings));
 });
+
+// ---- 敵対的検証（1 周目）の指摘を固定する ----
+
+// stdout を厳密に検査する版。opts: { env, shellPath(Buffer 的な printf 式) }
+function judgeX(args, opts = {}) {
+  const r = spawnSync('bash', [SCRIPT, ...args], { encoding: 'buffer', env: opts.env || process.env });
+  return parseStrict(r);
+}
+function parseStrict(r) {
+  assert.equal(r.status, 0, `exit 0 のはず: status=${r.status} stderr=${r.stderr}`);
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(r.stdout);
+  const lines = text.split('\n').filter((l, i, a) => !(i === a.length - 1 && l === ''));
+  assert.equal(lines.length, 1, `stdout は 1 行のはず: ${JSON.stringify(text)}`);
+  const j = JSON.parse(lines[0]);
+  assert.ok(['strict', 'light'].includes(j.level), `level が不正: ${j.level}`);
+  assert.ok(Array.isArray(j.warnings));
+  return j;
+}
+const allWarn = (j) => j.warnings.join('\n');
+
+// 現在のブランチを離れずに、light 宣言を含むコミットを作って SHA を返す
+function lightCommit(work) {
+  const cur = git(work, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+  git(work, 'checkout', '-q', '-b', 'tmp-light-src');
+  writeConf(work, 'confirm_level=light\n');
+  git(work, 'add', '.');
+  git(work, 'commit', '-m', 'light source');
+  const sha = git(work, 'rev-parse', 'HEAD').trim();
+  git(work, 'checkout', '-q', cur);
+  git(work, 'branch', '-D', 'tmp-light-src');
+  return sha;
+}
+
+test('C1: 同名のタグ origin/main で ref を上書きしても strict のまま', () => {
+  const work = scenario('confirm_level=strict\n');
+  git(work, 'tag', 'origin/main', lightCommit(work));
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+});
+
+test('C1b: 同名のローカルブランチ origin/main で ref を上書きしても strict のまま', () => {
+  const work = scenario('confirm_level=strict\n');
+  git(work, 'branch', 'origin/main', lightCommit(work));
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+});
+
+const lightRepoEnvs = (light) => ({
+  GIT_DIR: path.join(light, '.git'),
+  GIT_WORK_TREE: light,
+  GIT_INDEX_FILE: path.join(light, '.git', 'index'),
+  GIT_COMMON_DIR: path.join(light, '.git'),
+  GIT_OBJECT_DIRECTORY: path.join(light, '.git', 'objects'),
+  GIT_ALTERNATE_OBJECT_DIRECTORIES: path.join(light, '.git', 'objects'),
+  GIT_NAMESPACE: 'foo',
+});
+
+for (const key of Object.keys(lightRepoEnvs('/x'))) {
+  test(`C2: 環境変数 ${key} が light リポジトリを指していても --dir の strict リポジトリで判定する`, () => {
+    const light = scenario('confirm_level=light\n');
+    const strict = scenario('confirm_level=strict\n');
+    const j = judgeX(['--dir', strict], { env: { ...process.env, [key]: lightRepoEnvs(light)[key] } });
+    assert.equal(j.level, 'strict', JSON.stringify(j));
+  });
+}
+
+test('C2b: GIT_DIR だけが light リポジトリを指し --dir が非 git ディレクトリでも strict + git リポジトリではない', () => {
+  const light = scenario('confirm_level=light\n');
+  const dir = tmp();
+  const j = judgeX(['--dir', dir], { env: { ...process.env, GIT_DIR: path.join(light, '.git') } });
+  assert.equal(j.level, 'strict');
+  assert.ok(warned(j, 'git リポジトリではない'), JSON.stringify(j.warnings));
+});
+
+test('C3: git replace で origin/main のコミットを light に差し替えても strict のまま', () => {
+  const work = scenario('confirm_level=strict\n');
+  const target = git(work, 'rev-parse', 'refs/remotes/origin/main').trim();
+  git(work, 'replace', target, lightCommit(work));
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+});
+
+test('C4: 非 UTF-8 バイトを含む存在しないパスでも、1 行の有効な UTF-8 JSON で strict + --dir', () => {
+  const r = spawnSync('bash', ['-c', 'bash "$0" --dir "$(printf "/nonexistent-\\377\\376/x")"', SCRIPT], { encoding: 'buffer' });
+  const j = parseStrict(r);
+  assert.equal(j.level, 'strict');
+  assert.ok(warned(j, '--dir'), JSON.stringify(j.warnings));
+});
+
+test('C4b: ダブルクォート・バックスラッシュ・タブを含むパスが警告にそのまま含まれる', () => {
+  const p = path.join(tmp(), 'a"b\\c\td');
+  const j = judgeX(['--dir', p]);
+  assert.equal(j.level, 'strict');
+  assert.ok(j.warnings.some((w) => w.includes(p)), JSON.stringify(j.warnings));
+});
+
+// ---- 最終行が改行なしの設定 ----
+
+test('M-nl1: ref 上の confirm_level=light（末尾改行なし）は light', () => {
+  const j = judgeDir(scenario('confirm_level=light'));
+  assert.equal(j.level, 'light');
+  assert.deepEqual(j.warnings, []);
+});
+
+test('M-nl2: 未知のキーの後ろの confirm_level=light（末尾改行なし）は light + 未知のキー', () => {
+  const j = judgeDir(scenario('foo=1\nconfirm_level=light'));
+  assert.equal(j.level, 'light');
+  assert.ok(warned(j, '未知のキー'), JSON.stringify(j.warnings));
+});
+
+test('M-nl3: 作業ツリーの confirm_level=light（末尾改行なし）も未マージの light 宣言として無視される', () => {
+  const work = scenario('confirm_level=strict\n');
+  writeConf(work, 'confirm_level=light');
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.ok(warned(j, '未マージの light 宣言は無視'), JSON.stringify(j.warnings));
+});
+
+// ---- origin/HEAD が解決できない ref を指す ----
+
+test('M1: origin/HEAD が存在しない origin/trunk を指すとき、origin/main で判定し origin/HEAD と代用を警告する', () => {
+  const work = scenario('confirm_level=light\n');
+  git(work, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk');
+  const j = judgeDir(work);
+  assert.equal(j.level, 'light');
+  assert.equal(j.source, `origin/main:${CONF}`);
+  assert.ok(warned(j, 'origin/HEAD') || allWarn(j).includes('origin/HEAD'), JSON.stringify(j.warnings));
+  assert.ok(allWarn(j).includes('代用'), JSON.stringify(j.warnings));
+});
+
+// ---- 設定ファイルの大きさ ----
+
+function sizedConf(head, bytes) {
+  const pad = bytes - Buffer.byteLength(head);
+  assert.ok(pad >= 2);
+  return head + '#' + 'x'.repeat(pad - 2) + '\n';
+}
+
+test('M2: ちょうど 65536 バイトの設定は通常どおり読む（light・警告なし）', () => {
+  const content = sizedConf('confirm_level=light\n', 65536);
+  assert.equal(Buffer.byteLength(content), 65536);
+  const j = judgeDir(scenario(content));
+  assert.equal(j.level, 'light');
+  assert.deepEqual(j.warnings, []);
+});
+
+test('M2b: 65537 バイトの設定は読まず strict + 大きすぎる、source と file は読もうとしたファイル', () => {
+  const content = sizedConf('confirm_level=light\n', 65537);
+  assert.equal(Buffer.byteLength(content), 65537);
+  const j = judgeDir(scenario(content));
+  assert.equal(j.level, 'strict');
+  assert.ok(warned(j, '大きすぎる'), JSON.stringify(j.warnings));
+  assert.equal(j.source, `origin/main:${CONF}`);
+  assert.equal(j.file, CONF);
+});
+
+test('M2c: 作業ツリーに 65537 バイト以上の設定があっても、ハングせず strict（ref が strict）', () => {
+  const work = scenario('confirm_level=strict\n');
+  writeConf(work, sizedConf('confirm_level=light\n', 70000));
+  const r = spawnSync('bash', [SCRIPT, '--dir', work], { encoding: 'buffer', timeout: 20000 });
+  const j = parseStrict(r);
+  assert.equal(j.level, 'strict');
+});
+
+// ---- Minor の固定 ----
+
+test('m-a: = の無い行は未知のキーとして警告する', () => {
+  const j = judgeDir(scenario('garbage\nconfirm_level=light\n'));
+  assert.equal(j.level, 'light');
+  assert.ok(warned(j, '未知のキー'), JSON.stringify(j.warnings));
+});
+
+test('m-b: 作業ツリーで confirm_level が重複している場合は light 宣言として扱わない（未マージ警告なし）', () => {
+  const work = scenario('confirm_level=strict\n');
+  writeConf(work, 'confirm_level=light\nconfirm_level=strict\n');
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.ok(!warned(j, '未マージの light 宣言は無視'), JSON.stringify(j.warnings));
+});
+
+test('m-c1: ref にファイルが無く作業ツリーが light のとき source は default・file は空', () => {
+  const work = scenario(null);
+  writeConf(work, 'confirm_level=light\n');
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.equal(j.source, 'default');
+  assert.equal(j.file, '');
+  assert.ok(warned(j, '未マージの light 宣言は無視'), JSON.stringify(j.warnings));
+});
+
+test('m-c2: ref が strict で作業ツリーが light のとき source は ref のファイル', () => {
+  const work = scenario('confirm_level=strict\n');
+  writeConf(work, 'confirm_level=light\n');
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.equal(j.source, `origin/main:${CONF}`);
+  assert.equal(j.file, CONF);
+  assert.ok(warned(j, '未マージの light 宣言は無視'), JSON.stringify(j.warnings));
+});
+
+test('m-d: キー重複の警告を連結すると 不正値 と キーの重複 の両方を含む', () => {
+  const j = judgeDir(scenario('confirm_level=light\nconfirm_level=strict\n'));
+  assert.equal(j.level, 'strict');
+  assert.ok(allWarn(j).includes('不正値'), JSON.stringify(j.warnings));
+  assert.ok(allWarn(j).includes('キーの重複'), JSON.stringify(j.warnings));
+});
+
+test('m-e: --dir を 2 回渡すと最後の --dir が使われる（後勝ち）', () => {
+  const strict = scenario('confirm_level=strict\n');
+  const light = scenario('confirm_level=light\n');
+  assert.equal(judge(['--dir', strict, '--dir', light]).level, 'light');
+  assert.equal(judge(['--dir', light, '--dir', strict]).level, 'strict');
+});
+
+test('m-f1: 不正値 1 件のとき警告はちょうど 1 本', () => {
+  const j = judgeDir(scenario('confirm_level=medium\n'));
+  assert.equal(j.warnings.length, 1, JSON.stringify(j.warnings));
+});
+
+test('m-f2: 未知のキーのみのとき警告はちょうど 1 本', () => {
+  const j = judgeDir(scenario('confirm_level=light\nfoo=bar\n'));
+  assert.equal(j.level, 'light');
+  assert.equal(j.warnings.length, 1, JSON.stringify(j.warnings));
+});
