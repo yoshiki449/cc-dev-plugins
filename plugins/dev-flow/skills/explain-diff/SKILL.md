@@ -25,10 +25,12 @@ AI がコードを書く速度が上がった結果、開発のボトルネッ�
 
 | 指定 | 例 | diff の取り方 |
 |---|---|---|
-| 省略 | `/explain-diff` | `git diff origin/main..HEAD`（現在のブランチ全体） |
+| 省略 | `/explain-diff` | `git diff <BASE>..HEAD`（現在のブランチ全体） |
 | コミット範囲 | `/explain-diff 4479b93..HEAD` | `git diff <範囲>` |
 | PR 番号 | `/explain-diff #42` | `gh pr diff 42`＋`gh pr view 42` で本文・Issue も読む |
-| ブランチ名 | `/explain-diff feature/foo` | `git diff origin/main..feature/foo` |
+| ブランチ名 | `/explain-diff feature/foo` | `git diff <BASE>..feature/foo` |
+
+`<BASE>` は呼び出し側から渡されたものを使う。渡されていなければ `bash skills/_shared/scripts/resolve-base-ref.sh --dir <リポの絶対パス>` で決める（[比較元の決め方](../_shared/reference/base-ref.md)）。終了コード2なら中断してユーザーに比較元を尋ねる（`main` へ黙って落ちない）。
 
 差分が空のときは「説明対象の変更がない」と報告して終了する（空の説明を生成しない）。
 

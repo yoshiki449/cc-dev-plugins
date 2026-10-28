@@ -70,7 +70,9 @@ overlay の有無にかかわらず、PR 作成前に次の1点は必ず確認�
 bash skills/_shared/scripts/assess-change-size.sh --dir <ship 対象リポの絶対パス> --main-model <このセッションのモデル ID>
 ```
 
-`{"size":"S|M|L","risk":"LOW|HIGH", ...,"gates":{...}}` が1行で返る。使うのは **`gates` だけ**。
+`{"size":"S|M|L","risk":"LOW|HIGH", ...,"base_ref":"...","base_source":"...","gates":{...}}` が1行で返る。使うのは **`gates` だけ**。
+
+**比較元 `<BASE>`**: 判定器が決めた `base_ref` を以降の節（E1.5a の self-review、E1.5c の台帳、E2.5 の explain-diff など）の `<BASE>` として使い回す（[比較元の決め方](../_shared/reference/base-ref.md)）。判定結果の提示に「基準: <base_ref>（<base_source>）」を含める。比較元を決められず `fallback` になったときはユーザーに比較元を尋ねる（`main` へ黙って落ちない）。
 
 `--main-model` には、このセッションのモデル ID（システムプロンプトに書かれた exact model ID。形は `claude-<モデル名>[1m]` のようになる）を、自分のものに置き換えて渡す。分からなければ省略する（従来どおりの本数になる）。自己検証するモデルのときだけ判定器が検証ゲートを軽くし、`verification_profile` が `self_verifying` になる。
 
@@ -87,7 +89,7 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <ship 対象リポの絶
 > どちらも `fallback:false` / `warnings:[]` で返るため、**最重量から最軽量へ静かに落ちる**。
 
 **`lines` が 0 の場合は判定を採用せず中断する。** ship する変更が存在する以上、
-`main...HEAD` の差分が 0 行になることはありえない。`--dir` の指定ミス・ブランチ違い・
+`<BASE>...HEAD` の差分が 0 行になることはありえない。`--dir` の指定ミス・ブランチ違い・
 base の解決ミスのいずれかなので、ユーザーに確認してから進む（0 行のまま進むと最軽量経路になる）。
 
 | `gates` のキー | 使う節 | 値 |
@@ -112,7 +114,7 @@ base の解決ミスのいずれかなので、ユーザーに確認してから
 
 #### 判定は失効する — コミットが入るたびに取り直す
 
-E0.5 の判定は **その時点の `main...HEAD`** に対するもの。E1.5a の Critical 修正などで
+E0.5 の判定は **その時点の `<BASE>...HEAD`** に対するもの。E1.5a の Critical 修正などで
 **コミットが1つでも増えたら判定を取り直す**（再実行は 0.02 秒）。
 
 とくに **リスクが `LOW` → `HIGH` に反転した場合、スキップ済みの E1.5b を必ず発火させる。**
@@ -230,7 +232,7 @@ fi
   - `subagent_type`: `general-purpose`
   - 指示: 「`<worktree の絶対パス>` の現ブランチに対して `Skill` ツールで `security-review` を実行し、
     結果を `.agent/reports/security-review-<Issue番号>.md` に **Write ツールで書く**」
-  - 対象: `git diff main...HEAD` の全変更ファイル
+  - 対象: `git diff <BASE>...HEAD` の全変更ファイル
   - 観点: OWASP Top 10（XSS / SQLi / SSRF / IDOR / CSRF / デシリアライゼーション / 機密情報漏洩 等）
   - **絶対パスで渡すこと**: Bash の cwd はターン間で launch dir に戻るため、
     相対パスだと別ディレクトリを検査して「指摘0件」を返す
@@ -340,7 +342,7 @@ fi
 
 1. `.agent/explanations/` の最新 HTML の生成時刻（mtime）と最終コミット時刻を比較する
    - **HTML の方が新しい** → 再生成せず、その HTML を使う（手順 4 のマニフェスト追記と PR 本文リンクのみ）
-   - **HTML が古い or 無い**（verify/qa 後に修正コミットが入った・手動フロー外から ship に入った）→ `/explain-diff` スキルを起動（対象: 今回の PR ブランチ全体 = `git diff origin/main..HEAD`）
+   - **HTML が古い or 無い**（verify/qa 後に修正コミットが入った・手動フロー外から ship に入った）→ `/explain-diff` スキルを起動（対象: 今回の PR ブランチ全体 = `git diff <BASE>..HEAD`）
    - 背景 → 直感 → コード解説 → 理解度クイズ（5問）の4部構成 HTML が対象リポジトリの `.agent/explanations/YYYY-MM-DD-<slug>.html` に生成される（ドキュメント保管規約）
 2. パスをユーザーに提示する。**PR への記載は E2.6 に一本化する**（この節では PR を編集しない。
    E2.5 と E2.6 の両方で書くと同じ内容が本文とコメントに二重に載る）

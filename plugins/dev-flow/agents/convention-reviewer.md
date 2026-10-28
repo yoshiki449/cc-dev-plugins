@@ -15,7 +15,7 @@ maxTurns: 20
 ## 入力
 
 起動時に以下を受け取る:
-- 対象差分の起点（例: `main...HEAD`）
+- 対象差分の起点（呼び出し側が渡す `<BASE>...HEAD`。自分で `main` を仮定しない。渡されていなければ中断して呼び出し側に尋ねる）
 - Issue 番号
 - 出力先: `.agent/self-review/<Issue番号>/convention.md`
 
@@ -30,7 +30,7 @@ maxTurns: 20
 3. `.eslintrc` / `.prettierrc` / `pyproject.toml` などの linter 設定があれば読む
 
 ### 2. 差分の点検
-1. `git diff --name-only main...HEAD` で変更ファイル一覧を取得
+1. `git diff --name-only <BASE>...HEAD` で変更ファイル一覧を取得
 2. 各ファイルを Read し、以下の観点で照合:
    - **命名**: 関数名・型名・変数名が既存パターンと一致するか
    - **配置**: 新規ファイルが既存ディレクトリ規約に沿うか

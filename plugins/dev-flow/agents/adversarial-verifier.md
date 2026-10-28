@@ -23,7 +23,7 @@ maxTurns: 30
 
 起動時に以下を受け取る:
 - Issue 番号と Issue 本文の主要セクション
-- 実装フェーズで触れたファイル一覧（`git diff --name-only main...HEAD`）
+- 実装フェーズで触れたファイル一覧（`git diff --name-only <BASE>...HEAD`。`<BASE>` は呼び出し側が渡す比較元。自分で `main` を仮定しない）
 - 対応コミット範囲
 
 ## ワークフロー

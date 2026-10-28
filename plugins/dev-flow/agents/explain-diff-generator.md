@@ -11,7 +11,7 @@ model: sonnet
 
 呼び出し元プロンプトから以下を受け取る:
 
-- 対象 diff の取得方法（コミット範囲・ブランチ名・PR 番号のいずれか。未指定なら `git diff origin/main..HEAD`）
+- 対象 diff の取得方法（コミット範囲・ブランチ名・PR 番号のいずれか。未指定なら `git diff <BASE>..HEAD`。`<BASE>` は呼び出し側が渡す比較元で、渡されていなければ中断して尋ねる。自分で `main` を仮定しない）
 - あれば: Issue / REQUIREMENTS.md / DESIGN.md 等の文脈ファイルパス
 - あれば: `.agent/autopilot/<task_id>/implementation-notes.md` や dev-loop 進捗ファイルの `## Deviations`（実装中の逸脱ログ。「背景」「直感」で計画と実装の差分を説明する一次情報になる）
 

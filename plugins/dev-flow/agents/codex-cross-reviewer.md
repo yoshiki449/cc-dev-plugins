@@ -15,7 +15,7 @@ maxTurns: 20
 ## 入力
 
 起動時に以下を受け取る:
-- 対象差分の起点（例: `main...HEAD`）
+- 対象差分の起点（呼び出し側が渡す `<BASE>...HEAD`。自分で `main` を仮定しない。渡されていなければ中断して呼び出し側に尋ねる）
 - Issue 番号
 - 出力先: `.agent/self-review/<Issue番号>/codex.md`
 
@@ -33,7 +33,7 @@ maxTurns: 20
 ### 2. 差分の準備
 
 ```bash
-git diff main...HEAD > /tmp/codex-review-input.diff
+git diff <BASE>...HEAD > /tmp/codex-review-input.diff
 gh issue view <Issue番号> --json title,body > /tmp/codex-review-issue.json
 ```
 

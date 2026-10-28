@@ -50,7 +50,7 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Agent, Skill, gh, mcp__codex__code
 
 ## 入力・出力
 
-- 入力: ブランチ差分（`main...HEAD`）、Issue 番号、信頼度しきい値（既定 80）、**起動メンバー配列**（`gates.self_review_members`。省略時は S1.5 で自分で判定する）
+- 入力: ブランチ差分（`<BASE>...HEAD`）、Issue 番号、信頼度しきい値（既定 80）、**起動メンバー配列**（`gates.self_review_members`。省略時は S1.5 で自分で判定する）
 - 出力: `.agent/self-review/<Issue番号>/integrated-report.md`（統合レポート）
 
 ## 手順
@@ -75,7 +75,8 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Agent, Skill, gh, mcp__codex__code
 3. 出力ディレクトリ作成: `mkdir -p .agent/self-review/<Issue番号>`
 
 ### S1. 差分の確定
-1. `git diff --stat main...HEAD` で変更概要を確認
+0. 比較元 `<BASE>` を決める: `bash skills/_shared/scripts/resolve-base-ref.sh --dir <レビュー対象リポの絶対パス>`（[比較元の決め方](../_shared/reference/base-ref.md)）。`dev-ship` 経由なら ship が決めた `<BASE>` が渡されるのでそれを使う。終了コード2なら中断してユーザーに比較元を尋ねる（`main` へ黙って落ちない）
+1. `git diff --stat <BASE>...HEAD` で変更概要を確認
 2. 差分が極端に小さい（< 20行）/ 大きい（> 5000行）場合はユーザーに継続確認
 
 ### S1.5. 起動メンバーの決定（`gates.self_review_members`）
@@ -105,7 +106,7 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <レビュー対象リ�
 
 判定結果の扱い:
 
-1. **`lines` が 0 なら判定を採用せず中断する。** レビュー対象の変更がある以上 `main...HEAD` が
+1. **`lines` が 0 なら判定を採用せず中断する。** レビュー対象の変更がある以上 `<BASE>...HEAD` が
    0 行になることはない。`--dir` の指定ミス・ブランチ違い・base 解決ミスのいずれかなので、
    ユーザーに確認してから進む（0 行のまま進むと最軽量経路になる）
 2. **`fallback` が `true` なら 5本（M・L 相当・standard）で実行**し、`fallback_reason` をユーザーに提示する
@@ -118,7 +119,7 @@ bash skills/_shared/scripts/assess-change-size.sh --dir <レビュー対象リ�
 ### S2. エージェント並列起動（3〜5本）
 
 S1.5 で確定したメンバーを **1メッセージで並列起動** する。`subagent_type` は上表の**接頭辞付きの名前**を使う。各エージェントには以下を渡す:
-- 対象差分の起点: `main...HEAD`
+- 対象差分の起点: `<BASE>...HEAD`（S1 で決めた実際の ref を渡す）
 - Issue 番号
 - 出力先パス（個別）
 - **成果物の受け渡し契約4項目**。出力先を伝えるだけでは、調査に時間を使い切って書かずに終わる（実測で5体中4体が Write 権限つきで未出力）。次の4行をプロンプトに**そのまま含める**:

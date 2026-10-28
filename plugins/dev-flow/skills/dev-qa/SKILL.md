@@ -221,7 +221,7 @@ QA 後はユーザーの成果物レビュー（ship 判断）が控えるため
 
 1. `.agent/explanations/` の最新 HTML の生成時刻（mtime）と最終コミット時刻を比較する
    - **HTML の方が新しい**（dev-verify D6.5 生成後にコミットが無い）→ 再利用。パス提示のみ
-   - **HTML が古い or 無い** → `/explain-diff` を起動して生成（対象: `git diff origin/main..HEAD`）し、hub-run-add.mjs で実行マニフェストに追記（`--flow dev-qa`）
+   - **HTML が古い or 無い** → `/explain-diff` を起動して生成（対象: `git diff <BASE>..HEAD`。`<BASE>` は `bash skills/_shared/scripts/resolve-base-ref.sh --dir <リポの絶対パス>` で決める。終了コード2なら中断してユーザーに尋ねる。[比較元の決め方](../_shared/reference/base-ref.md)）し、hub-run-add.mjs で実行マニフェストに追記（`--flow dev-qa`）
 2. **実物確認**: エージェントが申告したパスを鵜呑みにせず、`ls .agent/explanations/` でディレクトリを列挙して生成物の実在を確認する（申告パスと実体が1文字違う場合がある。`test -f <申告パス>` だけで「未生成」と断定しない）
 3. 生成に失敗してもフェーズを止めない
 
