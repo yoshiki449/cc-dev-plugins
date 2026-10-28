@@ -598,3 +598,97 @@ test('m-f2: 未知のキーのみのとき警告はちょうど 1 本', () => {
   assert.equal(j.level, 'light');
   assert.equal(j.warnings.length, 1, JSON.stringify(j.warnings));
 });
+
+// ---- 3 周目: 作業ツリー側の設定がシンボリックリンクのときの上限迂回 ----
+
+const WT_LIMIT = 65536;
+const IGNORED = '未マージの light 宣言は無視';
+
+// 先頭が confirm_level=light、残りを # 行で埋めた、ちょうど size バイトの内容
+function paddedLight(size) {
+  const head = 'confirm_level=light\n';
+  const rest = size - head.length;
+  const line = `${'#'.repeat(79)}\n`;
+  const n = Math.floor(rest / line.length);
+  const tail = rest - n * line.length;
+  const body = head + line.repeat(n) + (tail > 0 ? `${'#'.repeat(tail - 1)}\n` : '');
+  assert.equal(Buffer.byteLength(body), size);
+  return body;
+}
+
+// 作業ツリーの設定ファイルを target へのシンボリックリンクにする
+function linkConf(repo, target) {
+  const f = path.join(repo, CONF);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.rmSync(f, { force: true });
+  fs.symlinkSync(target, f);
+}
+
+test('S1: 65537 バイト以上の通常ファイルへのシンボリックリンクは読まれず、警告も出ない', () => {
+  const work = scenario('confirm_level=strict\n');
+  const big = path.join(tmp(), 'big.conf');
+  fs.writeFileSync(big, paddedLight(1024 * 1024));
+  linkConf(work, big);
+  const r = spawnSync('bash', [SCRIPT, '--dir', work], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(r.status, 0, `exit 0 のはず: status=${r.status} signal=${r.signal} stderr=${r.stderr}`);
+  const j = JSON.parse(r.stdout.trim());
+  assert.equal(j.level, 'strict');
+  assert.ok(!warned(j, IGNORED), JSON.stringify(j.warnings));
+});
+
+test('S2: リポジトリ外の小さい通常ファイルへのシンボリックリンクも宣言として扱わない', () => {
+  const work = scenario('confirm_level=strict\n');
+  const small = path.join(tmp(), 'small.conf');
+  fs.writeFileSync(small, 'confirm_level=light\n');
+  linkConf(work, small);
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.ok(!warned(j, IGNORED), JSON.stringify(j.warnings));
+});
+
+test('S3a: 通常ファイルがちょうど 65536 バイトなら読まれ、未マージの light 宣言として警告される', () => {
+  const work = scenario('confirm_level=strict\n');
+  writeConf(work, paddedLight(WT_LIMIT));
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.ok(warned(j, IGNORED), JSON.stringify(j.warnings));
+});
+
+test('S3b: 通常ファイルが 65537 バイトなら読まれず、警告されない', () => {
+  const work = scenario('confirm_level=strict\n');
+  writeConf(work, paddedLight(WT_LIMIT + 1));
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.ok(!warned(j, IGNORED), JSON.stringify(j.warnings));
+});
+
+test('S3c: ref にファイルが無い場合も、65536 バイトは警告され 65537 バイトは警告されない', () => {
+  const a = scenario(null);
+  writeConf(a, paddedLight(WT_LIMIT));
+  const ja = judgeDir(a);
+  assert.equal(ja.level, 'strict');
+  assert.ok(warned(ja, IGNORED), JSON.stringify(ja.warnings));
+  const b = scenario(null);
+  writeConf(b, paddedLight(WT_LIMIT + 1));
+  const jb = judgeDir(b);
+  assert.equal(jb.level, 'strict');
+  assert.ok(!warned(jb, IGNORED), JSON.stringify(jb.warnings));
+});
+
+test('S4: リンク先が存在しない壊れたシンボリックリンクでも strict・exit 0・警告なし', () => {
+  const work = scenario('confirm_level=strict\n');
+  linkConf(work, path.join(tmp(), 'missing.conf'));
+  const j = judgeDir(work);
+  assert.equal(j.level, 'strict');
+  assert.ok(!warned(j, IGNORED), JSON.stringify(j.warnings));
+});
+
+test('S5: ref 上が light なら、作業ツリーの設定がシンボリックリンクでも light（作業ツリーは見ない）', () => {
+  const work = scenario('confirm_level=light\n');
+  const small = path.join(tmp(), 'strict.conf');
+  fs.writeFileSync(small, 'confirm_level=strict\n');
+  linkConf(work, small);
+  const j = judgeDir(work);
+  assert.equal(j.level, 'light');
+  assert.equal(j.source, `origin/main:${CONF}`);
+});
