@@ -60,7 +60,7 @@ VM は Ubuntu 24.04・root で、`git` / `jq` / `ripgrep` / `docker`（dockerd�
 
 1. 対象リポジトリで `bash <skill-dir>/scripts/apply_cloud_env_setup.sh [対象ディレクトリ]`（`--no-plugins` は互換のため受け付けるが何もしない） を実行する。スクリプトが以下を行う:
    - `package.json`（1階層下も含めて Playwright を検出）/ `requirements.txt` / `pyproject.toml`+`uv.lock` / `go.mod` / `docker-compose.yml` を検出
-   - `scripts/install_pkgs.sh` を生成（既存ファイルは上書きせず警告のみ）
+   - `scripts/install_pkgs.sh` を生成（既存ファイルは上書きせず警告のみ）。`docker-compose.yml` / `compose.yml` があるリポジトリでは、`pip install` / `uv sync` をコメントアウトで生成する（backend はコンテナ内で動くことが多く、VM の Python に入れても使わない。版固定の依存が入らないと `set -e` で hook が落ち、同期で走る SessionStart も待たせる）。VM の Python で直接動かす構成のときだけ、行のコメントを外す。`npm install` / `go mod download` は対象外
    - `.claude/settings.json` に SessionStart hook を**冪等に**マージ（既存キーと利用者の plugin 宣言は残す）
    - `~/.cc-plugins/overlay/claude-rules/cloud-portable-rules.md`（あれば）を `.claude/rules/cloud-portable-rules.md` に管理ブロックとして転記（詳細は下の「ユーザースコープ CLAUDE.md の汎用ルールをクラウドに持ち込む場合」）
    - Setup script のテンプレートと注意事項を表示
