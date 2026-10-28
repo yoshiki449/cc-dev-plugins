@@ -75,8 +75,8 @@ test('AC4: 正準の終了条件が「復唱への合意」と「未クローズ
   const lines = marked(read(REFERENCE), 'requirement-elicitation:exit', 'reference');
   assert.equal(lines.length, 4, 'exit は4行のはず');
   assert.match(lines[0], /項目を復唱してユーザーに合っているかを確認する。/);
-  // 本文に書いた復唱はダイアログを開いている間見えない（試運用で「表が見えません」と返り、合意の確認を1回やり直した）
-  assert.match(lines[0], /復唱の全文は AskUserQuestion のダイアログの中（question 文か選択肢の preview）に入れる。合意が取れたら終了し/);
+  // 本文に書いた復唱はダイアログを開いている間見えない（試運用で「表が見えません」と返り、合意の確認を1回やり直した）一方、preview も表示されない環境がある（#71）。全文は本文、question 文は要点、の二段にする
+  assert.match(lines[0], /復唱の全文は本文テキストに書き、同じターンの AskUserQuestion の question 文には要点（項目ごとの結論）だけを入れる。.*preview にしか書かれていない情報を作らない。合意が取れたら終了し/);
   assert.match(lines[1], /質問はせず復唱1回で終える$/);
   assert.match(lines[2], /^- 3往復しても埋まらない項目は/);
   assert.match(lines[3], /次の手順へ進んではならない$/);
@@ -301,7 +301,7 @@ test('AC22: 正準の examples が「結果の例で確認・推測で作らな�
   const lines = canonicalLines('examples');
   assert.equal(lines.length, 5, 'examples は5行のはず');
   assert.match(lines[0], /「入力 → 期待する結果」で書く。種別は正常・境界・例外を1つずつ。ユーザーの言葉を言い換えず、実データに近い具体値を使う$/);
-  assert.match(lines[1], /AskUserQuestion のダイアログの中（question 文か選択肢の preview）に、番号を付けてまとめて入れ/);
+  assert.match(lines[1], /例は番号を付けてまとめて本文テキストに書き、同じターンの AskUserQuestion の question 文には番号つきの要点.*preview にしか書かれていない情報を作らない。/);
   assert.match(lines[1], /選択肢は「すべて合っている」「違う例がある」にし、「違う例がある」が選ばれたら、その例の正しい結果を、候補を選択肢に並べて続けて聞く$/);
   assert.match(lines[3], /例を作るために、値や結果を推測で決めてはならない$/);
   assert.match(lines[4], /「合っている」と答えた例だけを「確認済み」にする。「未確認」の例が1件でも残っているうちは、次の手順へ進んではならない/);
