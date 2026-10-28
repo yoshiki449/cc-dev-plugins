@@ -120,6 +120,10 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 - `CLAUDE_CODE_REMOTE=true`（クラウドセッション）では、実スタックを「立てられない」と判断する前に、`bash <skill-dir>/../cloud-stack/scripts/cloud-stack.sh status <repo>` で状態を見て、立っていなければ同 `up <repo> --wait` を実行する。引継書や記憶にある「docker が無い」「DB が無い」は写さず、この実行結果（成功したか、失敗ならログ末尾）を根拠にする。実行して失敗したときだけ、実行したコマンドと失敗の出力を添えて未実施として記録する。`cloud-stack.sh list` に出ないリポジトリ（`.claude/cloud-stack.json` が無い）は対象外
 <!-- /cloud-stack-first -->
 
+<!-- native-start-first -->
+- 「docker が無い」「compose スタックが使えない」と感じても、それだけで QA を保留・未実施にしない。次の順に試し、試した手段と結果を Q5 のレポートの「環境起動の試行」に残す。(1) リポジトリの CLAUDE.md・README・DEVELOPMENT.md にある直接起動（docker を使わない起動）の方法で、バックエンド・フロントエンド・DB などを起動する。(2) `.claude/cloud-stack.json` があれば上の cloud-stack を使う。(3) どちらも失敗したときだけ、試した手段・実行したコマンド・失敗の出力をレポートに書いて未実施とする
+<!-- /native-start-first -->
+
 1. アプリが起動していることを確認（`curl` で起動URLへの到達確認。落ちていれば起動するか、ユーザーに起動を依頼）
 2. ログイン情報で認証が通ることを軽く確認（`mcp__playwright__browser_navigate` でログイン画面到達まで）
 3. QA用テストデータの有無を確認。なければAPI経由で作成する（**テストデータがないことを理由にQAをスキップしてはならない**。verify D2と同じ原則）
@@ -179,6 +183,12 @@ findings を統合し、`.agent/reports/qa-report-<Issue番号>.md` を作成す
 # QAレポート - Issue #<番号>（<機能名>）
 実施日: YYYY-MM-DD / ブランチ: <名> / 証跡: .agent/evidence/<番号>/qa/
 レビュー用動画: .agent/evidence/<番号>/qa/videos/（1ゴール1動画）
+
+## 環境起動の試行
+| 手段 | 結果 |
+|------|------|
+| 直接起動（CLAUDE.md / README） | 成功 / 失敗（コマンドと出力） / 該当なし |
+| cloud-stack | 成功 / 失敗（コマンドと出力） / 該当なし |
 
 ## 総合判定: 合格 | 条件付き合格 | 不合格
 | 観点 | 判定 | Critical | Major | Minor |
