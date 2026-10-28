@@ -21,6 +21,8 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `scripts/context-size.mjs [--threshold N]` | 現在のメインセッションのコンテキスト量を JSON 1 行で返す（既定の閾値 400K。判定不能でも exit 0） |
 | `reference/confirm-policy.md` | 確認レベル（`strict` / `light`）の正準の文と、設定ファイル `docs/dev-flow/confirm-level.conf` の記法・導入手順・既知の限界。消費者は下表 |
 | `scripts/confirm-level.sh --dir <パス>` | 確認レベルを JSON 1 行で返す（`level` / `source` / `file` / `warnings`）。origin の既定ブランチの ref 上の設定だけを読み、判定できないときはすべて `strict`。`--dir` は必須で、常に exit 0 |
+| `reference/flow-options.md` | プロジェクト別の要否設定（`explain_diff` / `test_spec`）の正準の文と、設定ファイル `docs/dev-flow/flow-options.conf` の記法・変更方法。消費者は下表 |
+| `scripts/flow-options.sh --dir <パス>` | 要否設定を JSON 1 行で返す（`explain_diff` / `test_spec` が `on` / `off` / `unset`）。origin の既定ブランチの ref 上の設定だけを読み、不明・不正値はそのキーを `unset`。常に exit 0 |
 
 ## サブエージェント成果物の受け渡し契約の消費者
 
@@ -87,6 +89,18 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 ## スコープ規律の例外（仕様に無い、ユーザーに見える挙動）の消費者
 
 `reference/scope-discipline.md` の例外ブロックは、上の表と**同じ3スキル**に複製で置く。`dev-implement` と `dev-fix` は止まって聞く（`scope-discipline-gap`）。`dev-loop` は途中で止まらない設計なので、記録して境界確認で提示する（`scope-discipline-gap-loop`）。`scripts/scope-discipline.test.js` が、上の表の全スキルにどちらかが置かれていること、取り違えていないことを検査する。**新しい消費者を上の表に足したら、どちらの例外を持つかも決めること**。
+
+## 要否設定の消費者
+
+`reference/flow-options.md` の正準の文は、下表のスキルに複製で置く（`dev` ルーターは節を持たず、7 番の判定に直接書く）。`scripts/flow-options-docs.test.js` がこの表と実ファイルを突き合わせる。**新しい消費者を足したらこの表と `reference/flow-options.md` の表にも足すこと**。設定は `/dev-config` が書く。
+
+| スキル | 使うキー |
+|---|---|
+| `dev-implement` | `test_spec` |
+| `dev-verify` | `explain_diff`, `test_spec` |
+| `dev-qa` | `explain_diff` |
+| `dev-ship` | `explain_diff` |
+| `dev` | `test_spec`（節なし） |
 
 ## 確認レベルの消費者
 

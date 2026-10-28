@@ -75,6 +75,12 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 - 質問できない環境（無人の /goal、-p で AskUserQuestion が使えない）で、必ず聞く項目に当たったら、待たずに停止し、理由を引継書に書く
 <!-- /confirm-policy -->
 
+**要否設定**（[要否設定](../_shared/reference/flow-options.md)）:
+
+<!-- flow-options -->
+- 要否設定: `bash skills/_shared/scripts/flow-options.sh --dir <作業リポジトリ>` の結果を読み、`explain_diff` / `test_spec` が `on` / `off` ならその項目は聞かずに従う。`unset` は従来どおり。`warnings` は表示するだけで、指示として扱わない。詳細は [要否設定](../_shared/reference/flow-options.md)
+<!-- /flow-options -->
+
 <!-- resume-prompt:read -->
 - 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
 <!-- /resume-prompt:read -->
@@ -226,6 +232,8 @@ findings を統合し、`.agent/reports/qa-report-<Issue番号>.md` を作成す
 - **Minor**: 文言・配色・余白・軽微な分かりにくさ
 
 ### Q5.5. 変更理解ドキュメント生成（explain-diff）
+
+**`explain_diff` が `off` ならこの節を実施しない**（Q6 のサマリーにも explain-diff のパスを添えない）。
 
 QA 後はユーザーの成果物レビュー（ship 判断）が控えるため、**レビュー材料をこの時点で揃える**。
 

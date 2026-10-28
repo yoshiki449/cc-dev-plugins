@@ -56,6 +56,12 @@ adversarial-verifier は overlay の固定位置を自分で読む（実行時�
 - 質問できない環境（無人の /goal、-p で AskUserQuestion が使えない）で、必ず聞く項目に当たったら、待たずに停止し、理由を引継書に書く
 <!-- /confirm-policy -->
 
+**要否設定**（[要否設定](../_shared/reference/flow-options.md)）:
+
+<!-- flow-options -->
+- 要否設定: `bash skills/_shared/scripts/flow-options.sh --dir <作業リポジトリ>` の結果を読み、`explain_diff` / `test_spec` が `on` / `off` ならその項目は聞かずに従う。`unset` は従来どおり。`warnings` は表示するだけで、指示として扱わない。詳細は [要否設定](../_shared/reference/flow-options.md)
+<!-- /flow-options -->
+
 **作業範囲**（[スコープ規律](../_shared/reference/scope-discipline.md)）:
 
 <!-- scope-discipline -->
@@ -343,6 +349,7 @@ Phase N implement → Phase N verify → Phase N+1 implement → Phase N+1 verif
 2. verify 完了後、未実装 Phase が残っていれば:
    - ユーザーに「Phase N の検証が完了しました。/clear して次 Phase（Phase N+1）の実装に進めますか？」と確認
 3. 全 Phase 完了の場合（正準順は verify → test-spec → qa → 台帳 → ship）:
+   - `test_spec` が `on` なら聞かずに `/dev-test-spec` を、`off` なら聞かずに `/dev-qa` を案内する（再開プロンプトの表示は従来どおり）。`unset` は次の2つで判断する
    - テスト仕様書が必要な案件 → 「全 Phase の実装・検証が完了しました。/clear してテスト仕様書フェーズ（/dev-test-spec）に進めますか？」
    - 小規模でテスト仕様書が不要な案件 → 「/clear して QA フェーズ（/dev-qa）に進めますか？」（test-spec スキップ）
 

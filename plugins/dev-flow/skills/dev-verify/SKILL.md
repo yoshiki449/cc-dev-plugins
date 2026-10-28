@@ -53,6 +53,12 @@ overlay が無い環境では、セキュリティ検証（D4.5）と E2E だけ
 - 質問できない環境（無人の /goal、-p で AskUserQuestion が使えない）で、必ず聞く項目に当たったら、待たずに停止し、理由を引継書に書く
 <!-- /confirm-policy -->
 
+**要否設定**（[要否設定](../_shared/reference/flow-options.md)）:
+
+<!-- flow-options -->
+- 要否設定: `bash skills/_shared/scripts/flow-options.sh --dir <作業リポジトリ>` の結果を読み、`explain_diff` / `test_spec` が `on` / `off` ならその項目は聞かずに従う。`unset` は従来どおり。`warnings` は表示するだけで、指示として扱わない。詳細は [要否設定](../_shared/reference/flow-options.md)
+<!-- /flow-options -->
+
 <!-- resume-prompt:read -->
 - 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
 <!-- /resume-prompt:read -->
@@ -233,6 +239,8 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
 
 ### D6.5. 変更理解ドキュメント生成（explain-diff）— 全 Phase 完了時のみ
 
+**`explain_diff` が `off` ならこの節を実施しない**（D7 の案内にも手動 `/explain-diff` と HTML のパスを出さない）。
+
 **全 Phase の実装・検証が完了した場合のみ実施**（未実装 Phase が残っていればスキップ）。ship 前の人間レビューは「/dev-ship と言う前」に行われるため、**レビュー材料はこの時点で揃えておく**（dev-ship E2.5 で生成すると PR 作成後になり遅い）。
 
 1. `/explain-diff` スキルを起動（対象: ブランチ全体 = `git diff origin/main..HEAD`）
@@ -266,6 +274,7 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
 5. 次のアクションをユーザーに確認:
    - **未実装 Phase が残っている場合**: 「Phase N の検証が完了しました。/clear して次 Phase（Phase N+1）の実装（/dev-implement）に進めますか？」
    - **全 Phase の実装・検証が完了した場合**（正準順は verify → test-spec → qa → 台帳 → ship）:
+     - `test_spec` が `on` なら聞かずに `/dev-test-spec` を、`off` なら聞かずに `/dev-qa` を案内する。`unset` は次の2つで判断する
      - テスト仕様書が必要な案件 → 「全 Phase の実装・検証が完了しました。/clear してテスト仕様書フェーズ（/dev-test-spec）に進めますか？」
      - 小規模でテスト仕様書が不要な案件 → 「全 Phase の実装・検証が完了しました。/clear して QA フェーズ（/dev-qa）に進めますか？」（test-spec スキップ）
      - いずれも D6.5 の explain-diff HTML のパスを添える
