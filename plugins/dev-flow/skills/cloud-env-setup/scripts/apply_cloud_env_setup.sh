@@ -83,8 +83,20 @@ else
         echo 'cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}"'
         echo ''
         [ "$HAS_NPM" = 1 ] && echo '[ -f package.json ] && npm install'
-        [ "$HAS_PIP" = 1 ] && echo '[ -f requirements.txt ] && pip install -r requirements.txt'
-        [ "$HAS_UV" = 1 ] && echo '[ -f pyproject.toml ] && [ -f uv.lock ] && uv sync'
+        # docker-compose.yml があるリポジトリは、backend を特定バージョンのコンテナ内で動かしている
+        # ことが多い。VM の Python は「3.x」としか決まっておらず、ホスト側に入れても使わないうえ、
+        # 版固定の依存が入らないと set -e で hook が落ち、同期で走る SessionStart も待たせる。
+        # 確実に要るとは言えないので、生成はするがコメントアウトにして、外す条件を行の上に書く
+        if [ "$HAS_COMPOSE" = 1 ] && { [ "$HAS_PIP" = 1 ] || [ "$HAS_UV" = 1 ]; }; then
+            echo '# docker-compose.yml があるため、Python 依存のホスト側インストールは既定で無効にしている。'
+            echo '# backend をコンテナ内で動かすなら不要（VM の Python は版が固定されておらず、失敗すると hook が落ちる）。'
+            echo '# テストなどを VM の Python で直接動かすときだけ、次の行のコメントを外す。'
+            [ "$HAS_PIP" = 1 ] && echo '# [ -f requirements.txt ] && pip install -r requirements.txt'
+            [ "$HAS_UV" = 1 ] && echo '# [ -f pyproject.toml ] && [ -f uv.lock ] && uv sync'
+        else
+            [ "$HAS_PIP" = 1 ] && echo '[ -f requirements.txt ] && pip install -r requirements.txt'
+            [ "$HAS_UV" = 1 ] && echo '[ -f pyproject.toml ] && [ -f uv.lock ] && uv sync'
+        fi
         if [ "$HAS_GO" = 1 ]; then
             for d in "${GO_MOD_DIRS[@]}"; do
                 if [ "$d" = "." ]; then
@@ -197,6 +209,7 @@ echo "----------------------------------------"
 RECOMMEND=()
 [ "$HAS_PLAYWRIGHT" = 1 ] && RECOMMEND+=("Playwright: プリインストールのブラウザと @playwright/test の要求版がずれるので、セッション初期化で npx playwright install を実行してください（@playwright/test を検出）")
 [ "$HAS_COMPOSE" = 1 ] && RECOMMEND+=("docker compose: Allowed domains に production.cloudfront.docker.com を足し、docker pull のブロックを有効化してください。ビルドでパッケージを取得するならプロキシ CA を渡す必要があります（注意事項を参照）")
+{ [ "$HAS_COMPOSE" = 1 ] && { [ "$HAS_PIP" = 1 ] || [ "$HAS_UV" = 1 ]; }; } && RECOMMEND+=("Python 依存: docker-compose.yml があるので、scripts/install_pkgs.sh の pip install / uv sync はコメントアウトで生成しました。backend が VM の Python で直接動く構成なら、コメントを外してください")
 [ "$HAS_GO" = 1 ] && RECOMMEND+=("Go ツールチェーン: VM に Go はプリインストールされていません（npm/pip/uv は Node/Python が VM 側にあるため気づきにくいですが、Go だけは無い）。テンプレートの「Go を使うリポジトリ」ブロックのコメントを外し、go.mod の go ディレクティブに合わせて GOVER を書き換えてください。Allowed domains に go.dev と dl.google.com の両方を足す必要があります（tarball の実体は dl.google.com から配信されるため、go.dev だけでは 403 で失敗します）")
 if [ "${#RECOMMEND[@]}" -gt 0 ]; then
     log "このリポジトリ向けの推奨:"
