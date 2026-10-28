@@ -134,6 +134,7 @@ Phase N+1: /dev-implement → /dev-verify → （fixがあれば /dev-fix）
 
 | 用途 | スキル |
 |---|---|
-| フル経路を一方通行で流す | `/dev-orchestrator full` |
+| フル経路を一方通行で流す（境界ごとに確認） | `/dev-orchestrator full` |
+| 境界で聞かずに ship の手前まで通す（plan/design 未実施なら止まる） | `/dev-run` |
 | 中規模改修を自動ループ | `/dev-loop` |
 | DESIGN.md 確定済で完全自律 | `/auto-build` |
