@@ -192,7 +192,6 @@ if [[ $REF_HAS_FILE -eq 1 ]]; then
       WARNINGS+=("confirm_level の指定が無い。strict で扱う")
     elif [[ $PARSED_COUNT -gt 1 ]]; then
       WARNINGS+=("confirm_level の値が不正値（キーの重複）。strict で扱う")
-      WARNINGS+=("confirm_level のキーの重複がある")
     elif [[ "$PARSED_VALUE" == "light" ]]; then
       LEVEL="light"
     elif [[ "$PARSED_VALUE" != "strict" ]]; then

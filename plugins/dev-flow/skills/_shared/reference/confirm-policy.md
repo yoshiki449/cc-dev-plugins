@@ -93,6 +93,8 @@ confirm_level=light
 
 どちらも、守る対象（Claude が通常の作業で自分の確認を緩めること）の外にある。お客様が使っているリポジトリでは、設定を置かなければ `strict` のままなので影響しない。
 
+もう1つ、判定器は `fetch` しない。上流で `confirm_level` を `light` から `strict` に戻しても、手元の `origin/<ブランチ>` が古いうちは `light` のまま動く。`strict` に戻した直後は、各自が `git fetch` するまで反映されない。
+
 ## 消費側
 
 複製先と節は [_shared/README.md](../README.md) の「確認レベルの消費者」の表が正。各 SKILL.md はマーカーの中を正準と同じ文で持ち、この文書へのリンク `[確認レベル](../_shared/reference/confirm-policy.md)` を節の中に置く。
