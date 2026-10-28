@@ -354,3 +354,23 @@ test('AC21: 契約から overlay_applied を採る理由の節が消えていな
   assert.ok(body.includes('空の雛形を置いた時点で警告が消える'), '空雛形の穴の記述が消えている');
   assert.ok(body.includes('conf_applied'), '同型である assess-change-size.sh への参照が消えている');
 });
+
+// #73: dev-qa の3つの穴。語の存在ではなく、挙動を決めている行を固定する。
+test('#73: dev-qa は判定器の場所を Base directory だけに頼らず探す', () => {
+  const md = fs.readFileSync(path.join(PLUGIN, 'skills/dev-qa/SKILL.md'), 'utf8');
+  assert.ok(md.includes('${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/_shared/scripts}'), 'CLAUDE_PLUGIN_ROOT を先に見る行が無い');
+  assert.ok(md.includes('plugins/cache/*/dev-flow/*/skills/_shared/scripts/qc-overlay.sh') || md.includes('.claude/plugins/cache/*/dev-flow/*/skills/_shared/scripts/qc-overlay.sh'), 'cache の探索が無い');
+  assert.ok(md.includes('bash "$SH"/qc-overlay.sh --phase qa'), '探した SH を使って判定器を呼ぶ行が無い');
+});
+
+test('#73: dev-qa は reviewer_agent が一覧に無いとき末尾名で探し、無ければ未起動を残す', () => {
+  const md = fs.readFileSync(path.join(PLUGIN, 'skills/dev-qa/SKILL.md'), 'utf8');
+  assert.ok(md.includes('`:` より後ろの名前が一致するものを探して'), '末尾名での照合指示が無い');
+  assert.ok(md.includes('4本目は\n起動せず、Q5 に'), '一致しないときの未起動報告が無い');
+});
+
+test('#73: dev-qa の Q4.5 は探索で答えが出るものだけを再探索し、出ないものを Q5 に回す', () => {
+  const md = fs.readFileSync(path.join(PLUGIN, 'skills/dev-qa/SKILL.md'), 'utf8');
+  assert.ok(md.includes('**探索で答えが出るものだけを再探索の対象にする。**'));
+  assert.ok(md.includes('再探索に回さず Q5 の指摘に回す'));
+});

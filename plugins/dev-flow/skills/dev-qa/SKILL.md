@@ -15,8 +15,15 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, WebFetch, mcp__playwr
 dev-flow は組織固有の品質観点を同梱しない。フェーズの開始時に overlay の適用状況を判定する。
 
 ```bash
-bash <skill-dir>/../_shared/scripts/qc-overlay.sh --phase qa
+# スキル本文ヘッダの Base directory は旧版のパスを指して実在しないことがある。実在する scripts を先に探す
+SH="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/_shared/scripts}"
+[ -f "$SH/qc-overlay.sh" ] || SH="<skill-dir>/../_shared/scripts"
+[ -f "$SH/qc-overlay.sh" ] || SH="$(dirname "$(ls -t ~/.claude/plugins/cache/*/dev-flow/*/skills/_shared/scripts/qc-overlay.sh ~/.claude/plugins/marketplaces/*/plugins/dev-flow/skills/_shared/scripts/qc-overlay.sh 2>/dev/null | head -1)")"
+bash "$SH"/qc-overlay.sh --phase qa
 ```
+
+3つとも見つからないときは判定を飛ばさず、`overlay_applied=0` 相当として「判定器が見つからず overlay 未判定」を報告する。
+cache に複数の版が併存するときは更新時刻が新しい版を使う。
 
 - `overlay_applied` が `1` → `file` のパスを Read し、並んでいる観点をこのフェーズの追加レンズとして適用する
 - `overlay_applied` が `0` → 観点を**自作せずスキップする**（組織の QC を dev-flow が発明してはいけない）
@@ -26,7 +33,11 @@ bash <skill-dir>/../_shared/scripts/qc-overlay.sh --phase qa
 [../_shared/reference/qc-overlay.md](../_shared/reference/qc-overlay.md)。
 
 `overlay_applied` が `1` かつ `reviewer_agent` が非空のときだけ、Q4 の観点別評価に
-4本目として `reviewer_agent` を足す。どちらかが欠ければ**3並列**で実施し、
+4本目として `reviewer_agent` を足す。`reviewer_agent` の名前が**セッションの利用可能エージェント一覧に無い**
+ときは（overlay 側のプラグイン名で返り、一覧には `dev-flow:<name>` でしか載っていない例がある）、
+一覧から `:` より後ろの名前が一致するものを探してそれで起動する。一致するものも無ければ4本目は
+起動せず、Q5 に「組織固有 QC レンズ ⏭ 未起動（エージェント `<名前>` が一覧に無い）」と残す。
+どちらかが欠ければ**3並列**で実施し、
 Q5 の統合レポートに「組織固有 QC レンズ ⏭ 未起動」の行を残す（消すと軽い経路を
 通ったことが後から監査できない）。
 
@@ -168,8 +179,10 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 7. 具体的には `ls .agent/evidence/<Issue番号>/qa/findings-*.md` で起動した本数分のファイルが揃っていることを確認する（overlay 無しなら3本。**4本を期待して待たない**）
 
 ### Q4.5. 追加探索（任意・最大1巡）
-1. 各 findings の「追加探索依頼」を確認する
-2. 依頼があれば、依頼内容をまとめて qa-explorer を**1回だけ**再起動し、証跡を追補する
+**探索で答えが出るものだけを再探索の対象にする。** ブラウザ操作で確かめられるもの（キャンセル後の再押下、ブラウザバック、スマホ幅など）が対象で、探索では答えが出ないもの（仕様上の判断など）は再探索に回さず Q5 の指摘に回す。
+
+1. 各 findings の「追加探索依頼」を確認し、上の線引きで「再探索」と「Q5 の指摘」に仕分ける
+2. 再探索の依頼があれば、依頼内容をまとめて qa-explorer を**1回だけ**再起動し、証跡を追補する
 3. 追補した証跡を該当の評価エージェントに渡して所見を更新する（2巡目以降は行わない）。更新後の所見も**本文で全文返させ**、メインが Q4 手順5と同じく該当 `findings-*.md` を逐語で上書き保存する
 
 ### Q5. QAレポートの作成
