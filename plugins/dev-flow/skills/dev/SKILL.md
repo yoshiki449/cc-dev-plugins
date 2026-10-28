@@ -136,5 +136,5 @@ Phase N+1: /dev-implement → /dev-verify → （fixがあれば /dev-fix）
 |---|---|
 | フル経路を一方通行で流す（境界ごとに確認） | `/dev-orchestrator full` |
 | 境界で聞かずに ship の手前まで通す（plan/design 未実施なら止まる） | `/dev-run` |
-| 中規模改修を自動ループ | `/dev-loop` |
+| implement〜verify だけ自動ループ（plan〜ship を通すなら `/dev-run` が内部で呼ぶ） | `/dev-loop` |
 | DESIGN.md 確定済で完全自律 | `/auto-build` |

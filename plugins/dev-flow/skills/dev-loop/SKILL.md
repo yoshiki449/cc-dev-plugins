@@ -1,6 +1,6 @@
 ---
 name: dev-loop
-description: 中規模改修向けの半自律ループ。`dev-implement → dev-self-review → dev-verify` を1コマンドで連鎖し、self-review／verify で指摘が出たら `dev-implement` または `dev-fix` に戻って回す。境界確認は verify 後の1回だけ。`auto-build` より軽く、メインセッション内で逐次実行する。`mode=report` ではコードを変えず指摘レポートだけ出す。ユーザーが「実装～セルフレビュー～動作確認まで一気にループで回して」「一度走らせたら止まらずに implement → review → verify を繰り返して」「auto-build は重すぎるけど自動で回したい」「中規模の改修を自動ループで」「コマンドを毎回打ちたくない」「implement と verify を自動往復させて」と言ったら起動する。「レポートモードで回して」「変更せずに指摘だけ出して」と言ったら mode=report で起動する。**コード変更とコミットを伴うため、ユーザーの明示指示で実行する**。
+description: 中規模改修向けの半自律ループ。`dev-implement → dev-self-review → dev-verify` を1コマンドで連鎖し、self-review／verify で指摘が出たら `dev-implement` または `dev-fix` に戻って回す。境界確認は verify 後の1回だけ。`auto-build` より軽く、メインセッション内で逐次実行する。`mode=report` ではコードを変えず指摘レポートだけ出す。ユーザーが「実装～セルフレビュー～動作確認まで一気にループで回して」「一度走らせたら止まらずに implement → review → verify を繰り返して」「auto-build は重すぎるけど自動で回したい」「中規模の改修を自動ループで」「コマンドを毎回打ちたくない」「implement と verify を自動往復させて」と言ったら起動する。「レポートモードで回して」「変更せずに指摘だけ出して」と言ったら mode=report で起動する。**コード変更とコミットを伴うため、ユーザーの明示指示で実行する**。plan から ship まで通すときは `/dev-run` が `boundary=none` で呼ぶ（単独起動も可）。
 user-invocable: true
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, gh
 ---
@@ -75,11 +75,14 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, gh
 /dev-loop mode=report                  # L1 report-only（コード変更ゼロ、指摘レポートのみ）
 /dev-loop supervisor=off               # 監視エージェント無効化（機械的ガードのみ）
 /dev-loop resume                       # 未完了の進捗ファイルから再開
+/dev-loop boundary=none                # L1.5d の境界確認を出さない（/dev-run から呼ぶときの指定）
 ```
 
 数値の最大値: `max_iter ≤ 10`, `max_commits ≤ 30`。超える指定はユーザーに警告して拒否する。
 
 `supervisor=off` のとき: `loop-supervisor` と `stop-judge` の呼び出しをスキップし、機械的ガード（max_*・ハッシュ thrashing）だけで動く。完全オフラインの軽量モード。
+
+`boundary=none` のとき: verify OK 後の境界確認（L1.5d）を出さず、結果で分岐する（手順は「L1.5d `boundary=none` のとき」）。上限・supervisor・stop-judge・thrashing 検知などのガードは通常どおり効く。`/dev-run` が内側のループとして呼ぶための指定で、引数なしの動きは変わらない。
 
 `mode=report` のとき: **L1 report-only モード**（Loop Engineering の autonomy level L1）。implement / fix を一切起動せず、self-review＋verify＋stop-judge を現状コードに対して1巡だけ実行して「ループを回したら何が直されるか」のレポートを出す。コード変更・コミットはゼロ。**初めてのプロジェクト・初めてのパターンでは mode=report から始める**（Never skip L1）。手順は後述「LR. mode=report の実行」。
 
@@ -343,6 +346,19 @@ supervisor の verdict は機械的ガード（max_*）と **同じ強度の har
 - そうでなければ L1.1 へ
 
 > **Hard cap は途中で緩められない**: ループ内部で AskUserQuestion により「あと1回だけ続けますか」のような上書きは禁止。上限を変えたい場合は halted-* で一度終了させ、次回起動時に引数で渡す。
+
+#### L1.5d `boundary=none` のとき
+
+AskUserQuestion を出さず、次のとおり決める。確認レベルが `strict` でも同じ（呼び出し元の `/dev-run` が起動時点で境界確認の省略に同意している）。
+
+| 状態 | 動作 |
+|---|---|
+| `## 要確認` が 1 件以上 | 聞けないので `halted-checkpoint` で L2 へ。要確認の全件を終了報告に転記する（呼び出し元が本人に提示する） |
+| stop-judge が `done=false` | `unmet_goals` を修正対象として次 iteration（L1.1）へ。上限（max_iterations など）に当たれば `halted-iter` などで終了する |
+| stop-judge が `done=true` かつ `confidence ≥ 80`、または `supervisor=off` | `done` で L2 へ |
+| stop-judge が `done=true` かつ `confidence < 80` | `halted-checkpoint` で L2 へ（人間判断に回す） |
+
+「強制完了」「修正点を追加」の入力は受け付けない。
 
 ### L2. ループ終了処理
 

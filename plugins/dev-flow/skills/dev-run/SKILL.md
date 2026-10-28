@@ -42,6 +42,8 @@ bash <skill-dir>/../_shared/scripts/run-preconditions.sh "<フェーズ列をカ
 
 ### R1. 準備
 
+0. 開始時の HEAD の SHA と時刻を控える（R2-6 の上限の基準）。
+
 1. 要否設定: `bash <skill-dir>/../_shared/scripts/flow-options.sh --dir <リポジトリのルート>` を実行し、`explain_diff` / `test_spec` を控える。聞き直さない。
 2. 確認レベル: 実行中は `light` として扱う（`confirm-level.sh` が `strict` でも、`/dev-run` を起動したこと自体を境界確認の省略への同意とする）。ただし下の「止まる条件」は `strict` でも `light` でも変わらない。
 3. 進捗ファイル `.agent/run-plan-<YYYYMMDD-HHMM>.md` を作る（フェーズ・状態・引継書パス・備考の表。orchestrator の進捗ファイルと同じ書式）。
@@ -52,10 +54,11 @@ bash <skill-dir>/../_shared/scripts/run-preconditions.sh "<フェーズ列をカ
 経路の各フェーズについて、メインセッションで次を行う。
 
 1. 進捗ファイルの当該行を `⏳` にする。
-2. 該当スキル `skills/dev-<phase>/SKILL.md` を Read し、本文の手順をそのまま実行する。サブエージェントの起動（qa-explorer、self-review の並列観点など）はフェーズ側の定義に従う。
+2. **implement から verify までは `/dev-loop boundary=none` に任せる**（経路に implement と verify が続いて含まれるとき。`dev-loop` が self-review を挟み、指摘が出れば implement / fix に戻って回す。上限・thrashing 検知・supervisor・stop-judge は dev-loop のものがそのまま効く）。終了状態で分岐する: `done` なら次のフェーズへ。`halted-checkpoint` なら要確認を本人に提示して止まる。それ以外の `halted-*` は理由を示して止まる。Phase 分割された案件では、Phase ごとに `dev-loop` を 1 回ずつ呼ぶ。それ以外のフェーズは、該当スキル `skills/dev-<phase>/SKILL.md` を Read し、本文の手順をそのまま実行する。サブエージェントの起動（qa-explorer、self-review の並列観点など）はフェーズ側の定義に従う。
 3. **フェーズ末尾の次フェーズへの確認を出さない。** 「/clear して…に進めますか？」「…に進めますか？」の確認と、`/clear` の案内（resume-prompt の表示）は省く。引継書の作成は省かない（状態の唯一の受け渡し先）。
 4. フェーズ前後で `latest-handover.sh` を比べ、新しい引継書ができたら `✅` にして記録する。できていなければ `❌` にして止まる。
-5. 指摘が出たとき: verify / qa の不合格は `dev-fix` を挿入し、直したら元のフェーズに戻る。同じ指摘で 2 周しても直らないときは止まる。
+5. **qa が不合格のとき**: `dev-fix`（Critical / Major のみ。Minor は Deviations に記録して進める）→ `dev-verify` → `dev-qa` の順に戻す。この修正ループは 3 周まで。同じ指摘（フェーズ名と指摘の見出し・対象ファイルの組が一致）が 2 周続いたら、3 周を待たずに止まる。
+6. **全体の上限**: `dev-run` 全体で、開始時の HEAD からのコミットが 15 件を超えるか、90 分を超えたら止まる。止まるときは理由・開始時の HEAD の SHA・直前の指摘を進捗ファイルと終了報告に書く。この上限は途中で緩めない（変えたいときは止まってから、次の起動時に指示する）。
 
 ### R3. コンテキストの区切り（/clear の代わり）
 
