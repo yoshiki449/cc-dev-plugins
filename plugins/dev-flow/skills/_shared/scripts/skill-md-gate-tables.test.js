@@ -510,8 +510,8 @@ const B1_3_6_REQUIRED_LINES = [
       '検出されず素通りする（Issue #45 Phase 3 敵対的検証 A M-2）',
   },
   {
-    key: 'setup時点でlines:0が正常',
-    line: '- setup 時点では差分がまだ無いので `lines:0` が正常。ここで見るのは `warnings` だけ',
+    key: '範囲指定付きはlines:0でない・lines:0では確認にならない',
+    line: '- 範囲指定を付けた実行の `lines` は過去の変更の行数で、`lines:0` ではないのが正常。範囲指定なしで走らせて `lines:0` が返っても除外の効きを確かめたことにはならない（dev-implement Step 0.6 の「`lines:0` は中断」とも別の話）',
     why: 'dev-implement Step 0.6 の「`lines:0` は中断」という契約と字面が一致するため、読み手が' +
       '矛盾する2つの指示に晒される（Issue #45 Phase 3 敵対的検証 B m-5）',
   },

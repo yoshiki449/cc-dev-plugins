@@ -157,12 +157,29 @@ git branch --show-current  # ← feature/<名前> であることを目視確認
 
 **以降 B2〜B6 のコマンドは必ずこの worktree 内で実行する**。引継書には worktree の絶対パスを記録する。
 
-#### B1-3. gitignore 対象を main clone から worktree へコピー ⚠ 必須
+#### B1-3. gitignore 対象を worktree へコピー ⚠ 必須
 
 worktree には **git 管理下のファイルしか来ない**。`.env` / `uploads/` / `.agent/` などの gitignore 対象は空のままなので、放置すると「アプリは起動しているのにデータが空」という紛らわしい状態になる。
 
+**`.agent/` のコピー元は main clone と決め打ちしない。** worktree を連鎖させる運用（直前の worktree で作業を続ける）では main clone の `.agent/` のほうが古く、引継書や評価レポートは直前の worktree にしか無い。実測では main clone が 120 ファイルで 7 日前に止まり、直前の worktree が 266 ファイルで正本だった。手順どおり main clone から写すと、引継書も評価レポートも欠けたまま implement に入る。
+
 ```bash
-cd <project-folder>/repo
+# 1. コピー元の候補（main clone と既存の全 worktree）を最終更新日時とファイル数で比べる
+bash skills/_shared/scripts/pick-agent-source.sh \
+  $(git -C <project-folder>/repo worktree list --porcelain | sed -n 's/^worktree //p' | grep -v '/worktrees/<branch-basename>$')
+# 出力: candidate 行（各候補のファイル数と最終更新）と chosen 行（採用するコピー元）
+```
+
+<!-- agent-source-by-recency -->
+`.agent/` のコピー元は、main clone と既存の worktree のうち `pick-agent-source.sh` が最終更新の新しいと判定したものにする。
+<!-- /agent-source-by-recency -->
+
+- **選んだ根拠（candidate 行と chosen 行）を完了報告に書く。** どれを正本としたかが後から追えないと、欠けたときに原因を探せない
+- `pick-agent-source.sh` が exit 3（どこにも `.agent/` が無い）なら `.agent/` のコピーは不要。初回の dev-setup はこの場合
+- 候補が多いと古い worktree が混ざるが、判定は「最終更新が最も新しい 1 つ」だけで足りる（`.agent/` は worktree 間で同期されないため、複数をマージしない）
+
+```bash
+cd <chosen-source>   # pick-agent-source.sh の chosen 行のディレクトリ
 # コピー対象を洗い出す（ignore されていて、かつ実体があるもの）
 git status --porcelain --ignored | grep '^!!'
 
@@ -172,6 +189,7 @@ cp -a uploads/.           <project-folder>/worktrees/<branch-basename>/uploads/
 cp -a .agent/.            <project-folder>/worktrees/<branch-basename>/.agent/
 ```
 
+- `.env` / `uploads/` は従来どおり main clone を元にしてよい（連鎖で古くなるのは作業成果物の `.agent/` だけ）
 - `cp -a src dst` は **dst が既存ディレクトリだと入れ子になる**（`dst/src/` ができる）。tracked な `.gitkeep` などで既にディレクトリが存在するケースがあるので、ディレクトリは `cp -a src/. dst/` 形式で写す
 - `node_modules` は写さない（B2 で判断する）
 - **B3 の `COMPOSE_PROJECT_NAME` 追記より前に実施する**。順序を逆にすると `.env` を上書きして設定が消える
@@ -191,7 +209,7 @@ if [ -f docs/testing/size-tier.conf.template ] && [ ! -e .agent/size-tier.conf ]
 fi
 ```
 
-- **B1-3 の後に実行する。** B1-3 で main clone から `.agent/` を写している場合、そこに既に
+- **B1-3 の後に実行する。** B1-3 で `.agent/` を写している場合、そこに既に
   conf があればそちらが正しい（プロジェクトで育てた較正）。**テンプレートで上書きしない**
 - テンプレートが無いリポジトリでは **no-op**（大半のリポはこれ）
 - テンプレートは `docs/` 配下（tracked）に置く。`.agent/` に置くと同じ理由で消える
@@ -208,7 +226,7 @@ B1-3.5 は `docs/testing/size-tier.conf.template` を**コピーするだけ**�
 
 - **発火条件**: `docs/testing/size-tier.conf.template` が**存在しないリポジトリ**のときだけ。
   既にあるなら B1-3.5 がそのままコピーするので、このステップは **no-op**
-- **⚠ B1-3.5 の優先順位を壊さないこと**: B1-3 で main clone から `.agent/` を写した結果
+- **⚠ B1-3.5 の優先順位を壊さないこと**: B1-3 で `.agent/` を写した結果
   `.agent/size-tier.conf` が既に存在する場合、それは**プロジェクトで育てた較正**なので、
   ここで生成したテンプレートで**上書きしない**。`docs/` 配下への書き出しはこの条件と無関係に行う
 - **生成しない選択肢を残す**: 既定閾値（100/500）・既定パターンで妥当なリポジトリでは
@@ -257,17 +275,27 @@ B1-3.5 は `docs/testing/size-tier.conf.template` を**コピーするだけ**�
      echo "適用: docs/testing/size-tier.conf.template → .agent/size-tier.conf"
    fi
    ```
-6. **判定器を実際に走らせて、警告が消えたことを確認する**（書いただけで効いていない状態を
-   放置しない）
+6. **判定器を過去のコミット範囲に対して走らせ、`exclude:` が期待どおり働くか確かめる**（書いただけで
+   効いていない状態を放置しない）
+
+   setup 時点の worktree には差分が無く、`assess-change-size.sh` は未コミットの変更（`git add -N` を
+   含む）を見ない。差分ゼロの worktree に対して走らせても、`exclude:` が当たるかは分からない。
+   `--base` / `--head` で、テストコードを含む過去のコミット範囲を指定する
    ```bash
-   bash skills/_shared/scripts/assess-change-size.sh --dir <worktreeの絶対パス>
+   # 直近のテストを含むマージ済みの変更（例: 直近 20 コミット）で、除外前後の行数を見る
+   bash skills/_shared/scripts/assess-change-size.sh --dir <worktreeの絶対パス> --base HEAD~20 --head HEAD
    ```
-   出力 JSON の `warnings` に `docs/testing/size-tier.conf.template` を含む行が無ければ較正は
-   効いている（`--dir` は cwd 依存にしない。B1-1〜E1.2 系の全消費箇所と同じ理由で、cwd が
-   ずれると判定サイズが無音で軽い方へ落ちる）
+   - 出力の `excluded_paths` に step 2 で提案した除外パターンに当たったパスが入り、`lines` が
+     除外した分だけ減っていれば効いている。`excluded_paths` が空ならパターンが当たっていない
+     （パスの書き方か、`/` の有無による照合対象を疑う）
+   - 範囲指定を付けた実行の `lines` は過去の変更の行数で、`lines:0` ではないのが正常。範囲指定なしで走らせて `lines:0` が返っても除外の効きを確かめたことにはならない（dev-implement Step 0.6 の「`lines:0` は中断」とも別の話）
+   - 履歴が 20 コミットに満たなければ `--base` を短くする。テストコードを含むコミットが範囲に無い
+     ときは、除外の効きは確認できなかったと B6 の引継書に書く（「確認した」と書かない）
+   - 出力 JSON の `warnings` に `docs/testing/size-tier.conf.template` を含む行が無ければ較正は
+     効いている（`--dir` は cwd 依存にしない。B1-1〜E1.2 系の全消費箇所と同じ理由で、cwd が
+     ずれると判定サイズが無音で軽い方へ落ちる）
    - **`既定を緩めている` の警告は出てよい**（exclude の追加・閾値の引き上げは緩和方向なので必ず鳴る仕様）。ここで見るのは `docs/testing/size-tier.conf.template` を含む警告が消えたことだけ
    - **`解釈できなかった` を含む警告が1件でもあれば、書式を直してから再実行する**（警告は20件で打ち切られるため、解釈不能行が多いと較正警告そのものが省略されて偽の緑になる）
-   - setup 時点では差分がまだ無いので `lines:0` が正常。ここで見るのは `warnings` だけ
 
 <!-- このフェンスの info string は conf 固定（テストが節から実例を抜き出して判定器に食わせる） -->
 以下は対話で埋めた結果の完成形（プレースホルダではなく実際に効く値。数値・パターンは
@@ -355,7 +383,7 @@ E2E テストを含むプロジェクト（`playwright.config.{ts,js,mjs,cjs}` �
 
    - `-sfn` を必ず付ける。`-n` が無いと、既存の symlink（ディレクトリ指し）の**中**に入れ子で作られる
    - 向き先はブランチごとに変わる。次に dev-setup を実行したときは**新しい worktree に貼り替える**（同じコマンドでよい）
-   - **正準の `.agent/` は worktree 側**。`repo/.agent` は B1-3 でコピーした別実体で、同期はされない。以降のフェーズは worktree の中で作業するのでこれで整合する
+   - **正準の `.agent/` は worktree 側**。`repo/.agent` や前の worktree の `.agent` は B1-3 でコピーした元の別実体で、同期はされない（コピー元は B1-3 の `pick-agent-source.sh` で選ぶ。main clone が常に正本とは限らない）。以降のフェーズは worktree の中で作業するのでこれで整合する
 
 1. `bash skills/_shared/scripts/new-handover-path.sh <Issue番号>` で新規引継書パスを発番
 2. [../_shared/reference/handover-template.md](../_shared/reference/handover-template.md) の骨格 + setup 固有セクションを書き出す:
