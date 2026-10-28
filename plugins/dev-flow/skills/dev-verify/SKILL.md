@@ -86,7 +86,14 @@ overlay が無い環境では、セキュリティ検証（D4.5）と E2E だけ
 
 ### D3. E2E テスト作成（e2e-test-generator）
 1. **`dev-flow:e2e-test-generator` エージェント**を起動
-2. **セキュリティテストは常に生成する** → `e2e/tests/security/<機能名>-security.spec.ts`
+2. **セキュリティテストは、次のいずれかに触れる変更のときに生成する** → `e2e/tests/security/<機能名>-security.spec.ts`
+   1. 新規または変更された**公開経路**（API エンドポイント・画面ルート・Webhook など外から到達できる入口）
+   2. **認証・認可の境界**（ログイン・権限判定・テナント境界）
+   3. **秘密情報の扱い**（トークン・鍵・個人情報・認証情報の保存／受け渡し／ログ出力）
+   - **どれにも触れない内部ロジックの変更は生成しない。** 生成しない場合は、e2e-test-generator の起動プロンプトに
+     「security spec は生成しない（D3-2 非該当）」と明記して Step 8 を省かせ、**理由を完了報告（D7 の引継書）に1行書く**
+   - **迷ったら生成する側に倒す。** 薄い spec のコストは `test:e2e:core` 経由で ship のたびに残るが、
+     生成漏れは公開経路の無防備に直結する
 3. **ユーザーストーリーテスト・機能テストは既定では生成しない。** 次のいずれかに当たるときだけ
    生成し、**理由を spec 冒頭のコメントに明記させる**:
    1. コア導線そのものを変更する場合（ログイン・決済・申請の承認/却下・権限やテナント境界をまたぐ操作）
@@ -98,7 +105,7 @@ overlay が無い環境では、セキュリティ検証（D4.5）と E2E だけ
 5. **各テストに beforeAll/afterAll でテストデータの作成・削除を含める**
 6. **どのカテゴリを生成したかを控える**（D4 の実行対象がこれで決まる）
 
-> **セキュリティテストは「生成」と「実機検証」で担当が分かれる。** spec の生成は本 D3 の **e2e-test-generator**（Step 8 → `e2e/tests/security/<機能名>-security.spec.ts`）が行い、D4.5 の **security-tester** は生成された spec を含めた**実機検証**を担当する（security-tester 側に spec の生成手順は無い）。**問題2 で user-stories / functional を条件付きにしても Step 8 は据え置く**（消すと security spec の生成経路が dev-flow 全体から消滅する）。
+> **セキュリティテストは「生成」と「実機検証」で担当が分かれる。** spec の生成は本 D3 の **e2e-test-generator**（Step 8 → `e2e/tests/security/<機能名>-security.spec.ts`）が行い、D4.5 の **security-tester** は生成された spec を含めた**実機検証**を担当する（security-tester 側に spec の生成手順は無い）。**D3-2 で非該当と判断してもStep 8 自体は消さない**（消すと security spec の生成経路が dev-flow 全体から消滅する）。省くのは呼び出し側の明示指示があるこの D3-2 経路だけで、指示が無い起動（`auto-build` など対話なしの経路）は従来どおり必ず生成する。D4.5 の実機検証は D3-2 の結果によらず省略しない。
 
 ### D4. E2E テスト実行
 ```bash
@@ -117,9 +124,10 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
 > 実行すると「E2E が落ちている」ように見え、存在しないテストを D5 で直そうとすることになる。
 > どうしても一括で回したい場合はカテゴリ別スクリプトにだけ `--pass-with-no-tests` を付ける。
 >
-> **`npm run test:e2e` 本体には付けないこと。** security spec は常に生成される契約なので、
-> 全体が0本というのは「生成器が何も作らなかった」状態であり、そこは exit 1 のままにして
-> 検知させる必要がある。
+> **`npm run test:e2e` 本体には付けないこと。** 全体が0本のとき、D3-2 の非該当判断と D3-3 の
+> 非生成判断を**完了報告に書いていれば**「意図して何も生成しなかった」ので D4 の E2E 実行は
+> 省く（実行して exit 1 を D5 で直さない）。書いていなければ「生成器が何も作らなかった」状態
+> なので exit 1 のまま検知させる。
 
 **全テストが PASS するまで次に進まない。** 失敗があれば D5 で修正してから D4 を再実行する（Feedback loop）。
 
@@ -154,6 +162,10 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
 > `dev-ship` E0.5・E0.7・E1.2 と同じ規約に揃える（Bash の cwd はターン間で launch dir に戻るため、
 > cwd 相対で書くと monorepo や worktree で無音のズレを起こす）。
 
+- **`e2e/tests/security` が存在するときだけ、`test:e2e:core` にそのディレクトリを入れる。** D3-2 が非該当で
+  security spec を一度も生成していないリポジトリでは、無いパスを列挙すると `No tests found` で
+  ship のたびに E1.2 が赤くなる。入れたあとの security spec は ship のたびに実行されるので、
+  薄い spec を足し続けないことが D3-2 の条件の目的
 - **発火条件**（次のいずれかに当たったら実施する。どちらでもなければ no-op）:
   1. `package.json` に `test:e2e:core` が**未定義**
   2. 定義済みでも、**この Phase でコア導線そのものを変更した**（D3-3 の条件(1) に当たった）なら**中身を見直す**
@@ -236,6 +248,7 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
 2. [../_shared/reference/handover-template.md](../_shared/reference/handover-template.md) の骨格 + verify 固有セクションを書き出す:
    - テスト結果サマリー（PASS/FAIL 件数）
    - セキュリティチェックサマリー（`security-check-<Issue番号>.md` のパスと Critical/Major 件数）
+   - security spec の生成可否と理由（D3-2。生成しなかった場合は「公開経路・認証境界・秘密情報のどれにも触れない」旨を1行）
    - 残すべき主要画面のスクリーンショット・レビュー用動画（`e2e/test-results/` から `.agent/evidence/<Issue番号>/` にコピーし、パスで参照。次回のテスト実行で消えるため必ずコピー）
    - 未修正バグ一覧
    - ユーザーフィードバックで未対応のもの
