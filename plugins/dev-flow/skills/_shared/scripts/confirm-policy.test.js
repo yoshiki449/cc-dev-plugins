@@ -146,3 +146,46 @@ test('AC9: 全消費者の SKILL.md の frontmatter が壊れていない', () =
     assert.ok(md.indexOf('\n---\n', 4) > 0, `${c.skill}: frontmatter が閉じていない`);
   }
 });
+
+const AUTO_ADOPT_HEADING = '## 自動採用の記録';
+const E2_HEADING = '### E2. PR作成';
+const AUTO_ADOPT_ITEM = '自動採用した判断';
+
+test('AC10: 正準の文書に「自動採用の記録」節があり、書式の例が 自動採用: → 根拠: → 変更時の影響: の順に1行で並ぶ', () => {
+  const body = section(read(REFERENCE), AUTO_ADOPT_HEADING);
+  assert.ok(body.includes(AUTO_ADOPT_ITEM), `節に「${AUTO_ADOPT_ITEM}」が無い`);
+  assert.ok(body.includes('PR 本文'), '節に「PR 本文」が無い');
+  assert.ok(
+    body.split('\n').some((l) => /自動採用:.*根拠:.*変更時の影響:/.test(l)),
+    '1行の中に「自動採用:」「根拠:」「変更時の影響:」がこの順で現れる書式の例が無い',
+  );
+});
+
+test('AC11: dev-ship の E2 節に「自動採用した判断」の項目があり、light で入れ strict で入れない向きで書かれている', () => {
+  const e2 = section(read(skillMd('dev-ship')), E2_HEADING);
+  for (const w of [AUTO_ADOPT_ITEM, 'light', 'strict', '自動採用:', '引継書', '進捗ファイル', 'なし', 'マージ前', 'PR を修正']) {
+    assert.ok(e2.includes(w), `E2 節に「${w}」が無い`);
+  }
+  // 項目の行と、それより深くインデントされた続きの行を1ブロックとして見る。
+  const lines = e2.split('\n');
+  const at = lines.findIndex((l) => l.includes(AUTO_ADOPT_ITEM));
+  assert.notStrictEqual(at, -1, `E2 節に「${AUTO_ADOPT_ITEM}」を含む行が無い`);
+  const indent = (l) => l.match(/^\s*/)[0].length;
+  const block = [lines[at]];
+  for (let i = at + 1; i < lines.length && lines[i].trim() && indent(lines[i]) > indent(lines[at]); i++) block.push(lines[i]);
+  const text = block.join('\n');
+  const li = text.indexOf('light');
+  const si = text.indexOf('strict');
+  assert.ok(li !== -1 && si !== -1, '項目のブロックに light と strict の両方が無い');
+  assert.ok(li < si, '項目のブロックで light が strict より先に現れない（向きが反転している疑い）');
+});
+
+test('AC12: 「自動採用した判断」が E2 節の「2. 含める内容:」と「3. 複数リポジトリの場合は」の間に置かれている', () => {
+  const e2 = section(read(skillMd('dev-ship')), E2_HEADING);
+  const from = e2.indexOf('2. 含める内容:');
+  const to = e2.indexOf('3. 複数リポジトリの場合は');
+  assert.notStrictEqual(from, -1, 'E2 節に「2. 含める内容:」が無い');
+  assert.notStrictEqual(to, -1, 'E2 節に「3. 複数リポジトリの場合は」が無い');
+  assert.ok(from < to, '「2. 含める内容:」が「3. 複数リポジトリの場合は」より後ろにある');
+  assert.ok(e2.slice(from, to).includes(AUTO_ADOPT_ITEM), `含める内容の箇条書きに「${AUTO_ADOPT_ITEM}」が無い`);
+});
