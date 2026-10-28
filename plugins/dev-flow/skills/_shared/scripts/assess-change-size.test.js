@@ -125,6 +125,8 @@ const SCHEMA_TOP_KEYS = [
   'matched_risk_paths',
   'excluded_paths',
   'scopes',
+  'base_ref',
+  'base_source',
   'fallback',
   'fallback_reason',
   'warnings',
@@ -2666,4 +2668,49 @@ test('AC73: 判定不能（fallback）のときは自己検証モデルでも L�
   assert.deepEqual(out.gates.adversarial_lenses, ['A', 'B', 'C', 'D']);
   assert.equal(out.gates.code_reviewer, 'per_phase');
   assert.deepEqual(out.gates.self_review_members, SELF_REVIEW_ML);
+});
+
+// --- E8: --base 省略時は resolve-base-ref.sh で比較元を決める（Issue #12） ----------
+// develop 統合のリポジトリで main...HEAD を使うと、develop 側の無関係な変更を拾って
+// L×HIGH に誤判定する。実差分（origin/develop...HEAD）だけで判定されることを固定する。
+
+test('E8: develop 統合のリポジトリで --base 省略 → origin/develop を基準に実差分だけを判定する', (t) => {
+  const dir = initRepo(t, { branch: 'work' });
+  writeLines(dir, 'README.md', 3);
+  const root = commit(dir, 'root');
+  git(dir, ['update-ref', 'refs/remotes/origin/main', root]);
+  // develop 側に無関係な大きい変更（リスクパスを含む）を積む。origin/main からは遠い
+  writeLines(dir, 'src/auth/other-feature.ts', 400);
+  writeLines(dir, 'src/api/other-feature.ts', 400);
+  const dev = commit(dir, 'develop work');
+  git(dir, ['update-ref', 'refs/remotes/origin/develop', dev]);
+  // 機能ブランチの実差分は小さい
+  writeLines(dir, 'src/util/mine.ts', 20);
+  commit(dir, 'my change');
+
+  const ghStub = makeFixtureDir(t);
+  fs.writeFileSync(path.join(ghStub, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  const res = spawnSync('bash', [SCRIPT, '--dir', dir], {
+    encoding: 'utf8',
+    env: { ...GIT_ENV, PATH: `${ghStub}:${process.env.PATH}` },
+    cwd: NEUTRAL_CWD,
+  });
+  const out = parseJsonOutput(res);
+
+  assert.equal(out.fallback, false);
+  assert.equal(out.base_ref, 'origin/develop');
+  assert.equal(out.base_source, 'nearest');
+  assert.equal(out.lines, 20);
+  assert.equal(out.files, 1);
+  assert.equal(out.size, 'S');
+  assert.equal(out.risk, 'LOW');
+});
+
+test('E8b: --base 明示なら base_source は explicit', (t) => {
+  const { dir, base } = newBaseRepo(t);
+  writeLines(dir, 'src/util/a.ts', 5);
+  const head = commit(dir, 'change');
+  const out = parseJsonOutput(runScript(['--dir', dir, '--base', base, '--head', head]));
+  assert.equal(out.base_ref, base);
+  assert.equal(out.base_source, 'explicit');
 });

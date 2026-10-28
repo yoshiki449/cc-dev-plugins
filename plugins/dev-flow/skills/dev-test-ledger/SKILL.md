@@ -57,9 +57,11 @@ bash <skill-dir>/../_shared/scripts/qc-overlay.sh --phase test-model
 
 ```bash
 N=$(bash <skill-dir>/../_shared/scripts/extract-issue-number.sh)
-git diff --name-only main...HEAD
+BASE=$(bash <skill-dir>/../_shared/scripts/resolve-base-ref.sh --dir . | sed -n 's/^{"base":"\([^"]*\)".*/\1/p')   # 終了コード2・空ならここで中断
+git diff --name-only "$BASE"...HEAD
 ```
 
+- 比較元 `<BASE>`（上の `$BASE`）の決め方は [比較元の決め方](../_shared/reference/base-ref.md)。決められなければ中断してユーザーに尋ねる（`main` へ黙って落ちない）。報告の冒頭に「基準: <base>（<source>）」を出す
 - Issue 番号が取れない場合は `AskUserQuestion` で番号を尋ねる
 - **差分が空なら台帳を作らず終了する**。「実装差分がありません。先に実装してから台帳を作ってください」と伝える（空撃ち防止）
 
@@ -71,15 +73,15 @@ git diff --name-only main...HEAD
 
 **欠けているものだけ**、その場で Agent で生成する（「先に `/dev-self-review` を実行してください」と突き放さない。このスキルの読者は非エンジニア）:
 
-- `coverage.md` が無い → `dev-flow:requirement-coverage-checker` を起動（Issue 番号、差分起点 `main...HEAD`、出力先、および `<skill-dir>/../_shared/reference/test-tier-model.md`（テスト層タグ付けの正）を渡す）
-- `adversarial-review-*.md` が無い → `dev-flow:adversarial-verifier` を起動（Issue 番号、`git diff --name-only main...HEAD` のファイル一覧、コミット範囲、出力先を渡す）
+- `coverage.md` が無い → `dev-flow:requirement-coverage-checker` を起動（Issue 番号、差分起点 `<BASE>...HEAD`、出力先、および `<skill-dir>/../_shared/reference/test-tier-model.md`（テスト層タグ付けの正）を渡す）
+- `adversarial-review-*.md` が無い → `dev-flow:adversarial-verifier` を起動（Issue 番号、`git diff --name-only <BASE>...HEAD` のファイル一覧、コミット範囲、出力先を渡す）
 
 両方が既にある場合は何も起動しない（再実行は無駄）。
 
 ### T2. テストタイトルの決定的抽出
 
 ```bash
-node <skill-dir>/../_shared/scripts/extract-test-titles.mjs --repo . --diff main...HEAD > .agent/test-ledger/.titles.json
+node <skill-dir>/../_shared/scripts/extract-test-titles.mjs --repo . --diff "$BASE"...HEAD > .agent/test-ledger/.titles.json
 ```
 
 台帳に載せるテスト名を LLM に grep させると転記ミス・幻覚が混ざり、非エンジニアの信頼が壊れる。**必ずこのスクリプトの出力を使う。**

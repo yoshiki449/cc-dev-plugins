@@ -723,17 +723,24 @@ resolve_gates() {
 }
 
 # base 側の自動検出。§4 の4候補をこの順で試す。全滅したら呼び出し元がフォールバックする。
+# 比較元の決定は resolve-base-ref.sh に一本化している（直書きの候補リストを持たない）。
+# 成功時は BASE / BASE_SOURCE を設定して 0、決められなければ 1（理由は BASE_ERROR）。
+BASE_SOURCE=""
+BASE_ERROR=""
 resolve_base() {
-  local root="$1" head_ref="$2" candidate mb
-  local candidates=("origin/main" "main" "origin/master" "master")
-  for candidate in "${candidates[@]}"; do
-    mb="$(git -C "$root" merge-base "$head_ref" "$candidate" 2>/dev/null)"
-    if [[ $? -eq 0 && -n "$mb" ]]; then
-      printf '%s' "$mb"
-      return 0
-    fi
-  done
-  return 1
+  local root="$1" head_ref="$2" helper out
+  helper="$(dirname "${BASH_SOURCE[0]}")/resolve-base-ref.sh"
+  out="$(bash "$helper" --dir "$root" --head "$head_ref" 2>/dev/null)"
+  if [[ $? -ne 0 ]]; then
+    BASE_ERROR="$(printf '%s' "$out" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')"
+    return 1
+  fi
+  BASE="$(printf '%s' "$out" | sed -n 's/^{"base":"\([^"]*\)".*/\1/p')"
+  BASE_SOURCE="$(printf '%s' "$out" | sed -n 's/^{"base":"[^"]*","source":"\([^"]*\)".*/\1/p')"
+  while IFS= read -r w; do
+    [[ -n "$w" ]] && WARNINGS+=("$w")
+  done < <(printf '%s' "$out" | sed -n 's/.*"warnings":\[\(.*\)\]}$/\1/p' | sed 's/","/\n/g; s/^"//; s/"$//')
+  [[ -n "$BASE" ]]
 }
 
 # --base/--head が実在するコミットに解決できることを確認する。空文字列も弾く
@@ -768,6 +775,8 @@ print_json() {
   out+="\"matched_risk_paths\":$(json_array "${MATCHED_RISK_PATHS[@]}"),"
   out+="\"excluded_paths\":$(json_array "${EXCLUDED_PATHS[@]}"),"
   out+="\"scopes\":$(json_array "${SCOPES[@]}"),"
+  out+="\"base_ref\":\"$(json_escape "$BASE")\","
+  out+="\"base_source\":\"$(json_escape "$BASE_SOURCE")\","
   out+="\"fallback\":$FALLBACK,"
   out+="\"fallback_reason\":\"$(json_escape "$FALLBACK_REASON")\","
   out+="\"warnings\":$(json_array "${WARNINGS[@]}"),"
@@ -863,9 +872,9 @@ fi
 if [[ $BASE_SET -eq 1 ]]; then
   verify_ref "$ROOT" "$BASE" || fallback "指定された ref を解決できない（--base）"
 else
-  BASE="$(resolve_base "$ROOT" "$HEAD_REF")"
-  [[ $? -eq 0 ]] || fallback "比較元 ref を解決できない（main/master が見つからない）"
+  resolve_base "$ROOT" "$HEAD_REF" || fallback "比較元 ref を解決できない（${BASE_ERROR:-候補ブランチが見つからない}）"
 fi
+[[ $BASE_SET -eq 1 ]] && BASE_SOURCE="explicit"
 
 # 4つのオプションはいずれも外すと判定が軽い方へ倒れる（実測）。
 #   core.quotepath=false : 非 ASCII パスが8進エスケープされ、リスクにも除外にも一致しなくなる

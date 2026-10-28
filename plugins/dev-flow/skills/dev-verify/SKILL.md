@@ -223,7 +223,7 @@ npm run test:e2e:functional      # 機能テストのみ（D3-3 で生成した�
 
 **全 Phase の実装・検証が完了した場合のみ実施**（未実装 Phase が残っていればスキップ）。ship 前の人間レビューは「/dev-ship と言う前」に行われるため、**レビュー材料はこの時点で揃えておく**（dev-ship E2.5 で生成すると PR 作成後になり遅い）。
 
-1. `/explain-diff` スキルを起動（対象: ブランチ全体 = `git diff origin/main..HEAD`）
+1. `/explain-diff` スキルを起動（対象: ブランチ全体 = `git diff <BASE>..HEAD`。`<BASE>` は `bash skills/_shared/scripts/resolve-base-ref.sh --dir <リポの絶対パス>` で決める。終了コード2なら中断してユーザーに尋ねる。[比較元の決め方](../_shared/reference/base-ref.md)）
 2. 生成された HTML のパスをユーザーに提示し、「レビュー前にブラウザで開き、クイズで理解を確認するのを推奨」と添える
 3. **実行マニフェスト**に追記: `node skills/_shared/scripts/hub-run-add.mjs --repo <repoルート> --run issue-<Issue番号> --flow dev-verify --issue <Issue番号> <explain-diff HTML のパス>`
 4. 生成に失敗してもフェーズを止めない（D7 で手動 `/explain-diff` を案内）

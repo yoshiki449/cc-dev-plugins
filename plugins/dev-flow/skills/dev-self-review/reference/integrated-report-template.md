@@ -6,7 +6,7 @@
 
 ```markdown
 # セルフレビュー統合レポート - Issue #<番号>
-実行日: YYYY-MM-DD HH:MM / ブランチ: <名> / 差分: main...HEAD
+実行日: YYYY-MM-DD HH:MM / ブランチ: <名> / 基準: <base>（<source>）/ 差分: <BASE>...HEAD
 信頼度しきい値: 80 / 並列エージェント: 5（判定 M × LOW）
 
 ## 総合判定: 合格 | 条件付き合格 | 不合格

@@ -1229,7 +1229,7 @@ ${REVIEW_DIR}review-video-index.md にも同内容を Markdown で書き出し�
 const explainDocRaw = await agent(
   `あなたは explain-diff-generator エージェントです。
 今回の自律ビルド（task_id: ${TASK_ID}）のブランチ全体の変更を対象に、変更理解ドキュメントを生成してください。
-- 対象 diff: \`git diff origin/main..HEAD\`（空なら "skipped" を返す）
+- 対象 diff: \`git diff <BASE>..HEAD\`（\`<BASE>\` は \`bash skills/_shared/scripts/resolve-base-ref.sh --dir <対象リポ>\` の base。終了コード2で決められないなら "skipped" を返す。空でも "skipped"）
 - 文脈: REQUIREMENTS.md / DESIGN.md / 関連 Issue #${A.issue_number ?? '(なし)'} / ${NOTES_FILE}（実装中の逸脱ログ）があれば読むこと
 - 出力: 対象リポジトリの .agent/explanations/<今日の日付 YYYY-MM-DD>-<slug>.html（自己完結型 HTML・日本語・4部構成: 背景→直感→コード解説→理解度クイズ5問。ドキュメント保管規約）
 - 最終出力は生成した HTML の絶対パスのみ。失敗時は "skipped" とだけ返す。`,

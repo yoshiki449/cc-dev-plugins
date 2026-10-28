@@ -20,7 +20,7 @@ maxTurns: 20
 ## 入力
 
 起動時に以下を受け取る:
-- 対象差分の起点（例: `main...HEAD`）
+- 対象差分の起点（呼び出し側が渡す `<BASE>...HEAD`。自分で `main` を仮定しない。渡されていなければ中断して呼び出し側に尋ねる）
 - Issue 番号
 - 出力先: `.agent/self-review/<Issue番号>/simplify.md`
 
@@ -35,7 +35,7 @@ maxTurns: 20
 
 ### 2. 重複・冗長性の独自検出
 
-1. `git diff main...HEAD` で差分を取得
+1. `git diff <BASE>...HEAD` で差分を取得
 2. 追加された関数本体に対し Grep でリポジトリ全体を検索し、類似実装がないか確認
 3. early return できる if-else / switch を列挙
 4. 1回しか使われていない interface / type alias を列挙
