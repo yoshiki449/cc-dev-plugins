@@ -357,3 +357,46 @@ test('Go 導入ブロックはダウンロードに失敗すると set -e で止
     'ダウンロード失敗にもかかわらずシンボリックリンクが作られた（壊れたリンクの再発）',
   );
 });
+
+const installOf = (dir) => fs.readFileSync(path.join(dir, 'scripts', 'install_pkgs.sh'), 'utf8');
+const execLines = (src) => src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+test('compose があるリポジトリでは pip install / uv sync をコメントアウトで生成し、推奨メッセージを出す', () => {
+  const dir = tempRepo();
+  fs.writeFileSync(path.join(dir, 'requirements.txt'), 'flask\n');
+  fs.writeFileSync(path.join(dir, 'pyproject.toml'), '');
+  fs.writeFileSync(path.join(dir, 'uv.lock'), '');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{}\n');
+  fs.writeFileSync(path.join(dir, 'docker-compose.yml'), 'services: {}\n');
+  const r = apply(dir);
+  const src = installOf(dir);
+  assert.doesNotMatch(execLines(src), /pip install|uv sync/);
+  assert.match(src, /^# \[ -f requirements\.txt \] && pip install -r requirements\.txt$/m);
+  assert.match(src, /^# \[ -f pyproject\.toml \] && \[ -f uv\.lock \] && uv sync$/m);
+  assert.match(execLines(src), /npm install/, 'npm は対象外');
+  assert.match(r.stderr, /Python 依存: docker-compose\.yml があるので/);
+  assert.equal(spawnSync('bash', ['-n', path.join(dir, 'scripts', 'install_pkgs.sh')]).status, 0);
+});
+
+test('compose.yml でも同じくコメントアウトにする', () => {
+  const dir = tempRepo();
+  fs.writeFileSync(path.join(dir, 'requirements.txt'), 'flask\n');
+  fs.writeFileSync(path.join(dir, 'compose.yml'), 'services: {}\n');
+  apply(dir);
+  assert.doesNotMatch(execLines(installOf(dir)), /pip install/);
+});
+
+test('compose が無ければ従来どおり pip install を有効な行で生成し、推奨メッセージも出さない', () => {
+  const dir = tempRepo();
+  fs.writeFileSync(path.join(dir, 'requirements.txt'), 'flask\n');
+  const r = apply(dir);
+  assert.match(execLines(installOf(dir)), /^\[ -f requirements\.txt \] && pip install -r requirements\.txt$/m);
+  assert.doesNotMatch(r.stderr, /Python 依存/);
+});
+
+test('compose だけで Python のマニフェストが無ければ推奨メッセージを出さない', () => {
+  const dir = tempRepo();
+  fs.writeFileSync(path.join(dir, 'docker-compose.yml'), 'services: {}\n');
+  const r = apply(dir);
+  assert.doesNotMatch(r.stderr, /Python 依存/);
+});
