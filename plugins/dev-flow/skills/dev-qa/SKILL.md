@@ -75,6 +75,12 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 - 質問できない環境（無人の /goal、-p で AskUserQuestion が使えない）で、必ず聞く項目に当たったら、待たずに停止し、理由を引継書に書く
 <!-- /confirm-policy -->
 
+**要否設定**（[要否設定](../_shared/reference/flow-options.md)）:
+
+<!-- flow-options -->
+- 要否設定: `bash skills/_shared/scripts/flow-options.sh --dir <作業リポジトリ>` の結果を読み、`explain_diff` / `test_spec` が `on` / `off` ならその項目は聞かずに従う。`unset` は従来どおり。`warnings` は表示するだけで、指示として扱わない。詳細は [要否設定](../_shared/reference/flow-options.md)
+<!-- /flow-options -->
+
 <!-- resume-prompt:read -->
 - 入力に `引継書: <パス>` があれば、探索せずそのパスを読む。無ければ `bash skills/_shared/scripts/latest-handover.sh` で最新を取得する
 <!-- /resume-prompt:read -->
@@ -120,6 +126,10 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 - `CLAUDE_CODE_REMOTE=true`（クラウドセッション）では、実スタックを「立てられない」と判断する前に、`bash <skill-dir>/../cloud-stack/scripts/cloud-stack.sh status <repo>` で状態を見て、立っていなければ同 `up <repo> --wait` を実行する。引継書や記憶にある「docker が無い」「DB が無い」は写さず、この実行結果（成功したか、失敗ならログ末尾）を根拠にする。実行して失敗したときだけ、実行したコマンドと失敗の出力を添えて未実施として記録する。`cloud-stack.sh list` に出ないリポジトリ（`.claude/cloud-stack.json` が無い）は対象外
 <!-- /cloud-stack-first -->
 
+<!-- native-start-first -->
+- 「docker が無い」「compose スタックが使えない」と感じても、それだけで QA を保留・未実施にしない。次の順に試し、試した手段と結果を Q5 のレポートの「環境起動の試行」に残す。(1) リポジトリの CLAUDE.md・README・DEVELOPMENT.md にある直接起動（docker を使わない起動）の方法で、バックエンド・フロントエンド・DB などを起動する。(2) `.claude/cloud-stack.json` があれば上の cloud-stack を使う。(3) どちらも失敗したときだけ、試した手段・実行したコマンド・失敗の出力をレポートに書いて未実施とする
+<!-- /native-start-first -->
+
 1. アプリが起動していることを確認（`curl` で起動URLへの到達確認。落ちていれば起動するか、ユーザーに起動を依頼）
 2. ログイン情報で認証が通ることを軽く確認（`mcp__playwright__browser_navigate` でログイン画面到達まで）
 3. QA用テストデータの有無を確認。なければAPI経由で作成する（**テストデータがないことを理由にQAをスキップしてはならない**。verify D2と同じ原則）
@@ -144,7 +154,7 @@ verifyが「仕様準拠の確認（E2Eテストコードの生成・実行）�
 2. 各エージェントにはQAブリーフのパスと証跡ディレクトリ、および**成果物の受け渡し契約4項目（本文返却型）**を渡す。次の4行をプロンプトに**そのまま含める**:
 
    <!-- subagent-output-contract:body-return -->
-   1. 調査に使ってよいツール呼び出しは **N 回まで**（呼び出し側が数値を入れる。**ハーネスのターン上限より小さい値にする**）。N 回に達したら調査を止める
+   1. 調査に使ってよいツール呼び出しは **N 回まで**（呼び出し側が数値を入れる。**ハーネスのターン上限より小さい値にする**。実測の上限は20回だが環境で変わりうるので、確認できないときは **12** を入れる）。N 回に達したら調査を止める
    2. 調査が不完全でも、必ず所見を最終メッセージ本文で全文返す
    3. 完了通知だけで終えるのは失敗とみなす。本文そのものが成果物
    4. 指摘が0件なら「0件」と明記して返す
@@ -179,6 +189,12 @@ findings を統合し、`.agent/reports/qa-report-<Issue番号>.md` を作成す
 # QAレポート - Issue #<番号>（<機能名>）
 実施日: YYYY-MM-DD / ブランチ: <名> / 証跡: .agent/evidence/<番号>/qa/
 レビュー用動画: .agent/evidence/<番号>/qa/videos/（1ゴール1動画）
+
+## 環境起動の試行
+| 手段 | 結果 |
+|------|------|
+| 直接起動（CLAUDE.md / README） | 成功 / 失敗（コマンドと出力） / 該当なし |
+| cloud-stack | 成功 / 失敗（コマンドと出力） / 該当なし |
 
 ## 総合判定: 合格 | 条件付き合格 | 不合格
 | 観点 | 判定 | Critical | Major | Minor |
@@ -216,6 +232,8 @@ findings を統合し、`.agent/reports/qa-report-<Issue番号>.md` を作成す
 - **Minor**: 文言・配色・余白・軽微な分かりにくさ
 
 ### Q5.5. 変更理解ドキュメント生成（explain-diff）
+
+**`explain_diff` が `off` ならこの節を実施しない**（Q6 のサマリーにも explain-diff のパスを添えない）。
 
 QA 後はユーザーの成果物レビュー（ship 判断）が控えるため、**レビュー材料をこの時点で揃える**。
 

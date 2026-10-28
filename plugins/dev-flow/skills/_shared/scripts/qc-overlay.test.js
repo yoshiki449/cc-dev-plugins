@@ -307,6 +307,7 @@ const ALLOWED_REFERENCES = [
   'advisor-policy.md',
   'cloud-stack-first.md',
   'confirm-policy.md',
+  'flow-options.md',
   'core-flow.md',
   'handover-template.md',
   'qc-overlay.md',

@@ -807,3 +807,41 @@ test('消費側6箇所すべてに core-flow.md への参照がある', () => {
       '（Issue #45 敵対的検証 B-1）',
   );
 });
+
+// --- Issue #74: D3-2 の security spec 生成を条件付きにする -------------------------
+//
+// 無条件だった D3-2 は、公開経路・認証境界・秘密情報のどれにも触れない内部ロジックの変更でも
+// 薄い spec を足し、`test:e2e:core` が e2e/tests/security を丸ごと回すので、実行コストだけが
+// ship のたびに残った。条件は D3-3 と同じ形で D3-2 に置く。Step 8（生成経路）自体は消さない。
+
+test('dev-verify D3-2 が security spec の生成条件3つと非生成時の報告を定めている', () => {
+  const d3 = section(read(DEV_VERIFY_MD), '### D3. E2E テスト作成');
+  // 手順行そのものを見る（節全体への語の存在チェックは、手順を反転しても解説文で通る）
+  const step = d3.split('\n').find((l) => l.startsWith('2. '));
+  assert.ok(step && /次のいずれかに触れる変更のときに生成する/.test(step),
+    'D3-2 が「常に生成する」に戻っている（条件付きの手順行が無い）:\n  ' + step);
+  assert.ok(!/常に生成する/.test(step), 'D3-2 の手順行に「常に生成する」が残っている');
+
+  const idx = d3.indexOf(step);
+  const block = d3.slice(idx, d3.indexOf('\n3. ', idx));
+  for (const [label, re] of [
+    ['公開経路', /1\.\s*新規または変更された\*\*公開経路\*\*/],
+    ['認証・認可の境界', /2\.\s*\*\*認証・認可の境界\*\*/],
+    ['秘密情報の扱い', /3\.\s*\*\*秘密情報の扱い\*\*/],
+    ['非該当は生成しない', /どれにも触れない内部ロジックの変更は生成しない/],
+    ['理由を完了報告へ1行', /理由を完了報告[^\n]*1行/],
+    ['迷ったら生成側', /迷ったら生成する側に倒す/],
+  ]) {
+    assert.ok(re.test(block), `D3-2 に「${label}」の定義行が無い`);
+  }
+});
+
+test('Step 8 は残り、dev-verify D3-2 が非該当と明示したときだけ省ける', () => {
+  const gen = read(E2E_GENERATOR_MD);
+  assert.ok(/8\.\s*\*\*セキュリティテストを生成\*\*/.test(gen), 'Step 8（生成経路）が消えている');
+  assert.ok(/明示が無ければ常に生成する/.test(gen),
+    '呼び出し側の明示が無いときは常に生成する、という既定が無い（auto-build 経路が生成しなくなる）');
+  assert.ok(/security spec は生成しない（D3-2 非該当）/.test(gen) &&
+    /security spec は生成しない（D3-2 非該当）/.test(read(DEV_VERIFY_MD)),
+    '省く指示の文言が生成器側と dev-verify 側で一致していない');
+});
