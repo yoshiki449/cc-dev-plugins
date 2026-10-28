@@ -202,11 +202,17 @@ if [[ $REF_HAS_FILE -eq 1 ]]; then
 fi
 
 # ref 上が light なら作業ツリーは見ない。それ以外で作業ツリーが light を宣言していたら警告する
-if [[ "$LEVEL" != "light" && -f "$ROOT/$CONF_PATH" ]] \
-  && [[ "$(stat -c %s "$ROOT/$CONF_PATH" 2>/dev/null)" -le $MAX_CONF_BYTES ]]; then
-  parse_conf "$(cat "$ROOT/$CONF_PATH" 2>/dev/null)"
-  if [[ $PARSED_COUNT -eq 1 && "$PARSED_VALUE" == "light" ]]; then
-    WARNINGS+=("未マージの light 宣言は無視した。$REF に取り込まれるまで strict")
+# シンボリックリンクはリンク先を読むと上限を迂回できるので宣言として扱わない。
+# 大きさは stat ではなく読んだバイト数で判定する（stat は失敗時に空文字を返し、数値比較が真になる）
+if [[ "$LEVEL" != "light" && -f "$ROOT/$CONF_PATH" && ! -L "$ROOT/$CONF_PATH" ]]; then
+  # 末尾に x を足すのは、$(...) が末尾の改行を落として境界のバイト数が1ずれるのを防ぐため
+  WT_CONTENT="$(LC_ALL=C head -c $((MAX_CONF_BYTES + 1)) "$ROOT/$CONF_PATH" 2>/dev/null; printf x)"
+  WT_CONTENT="${WT_CONTENT%x}"
+  if [[ -n "$WT_CONTENT" && $(LC_ALL=C; echo ${#WT_CONTENT}) -le $MAX_CONF_BYTES ]]; then
+    parse_conf "$WT_CONTENT"
+    if [[ $PARSED_COUNT -eq 1 && "$PARSED_VALUE" == "light" ]]; then
+      WARNINGS+=("未マージの light 宣言は無視した。$REF に取り込まれるまで strict")
+    fi
   fi
 fi
 
