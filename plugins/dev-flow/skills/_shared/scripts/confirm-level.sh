@@ -24,13 +24,33 @@ SOURCE="default"
 FILE=""
 WARNINGS=()
 
+# 継承した GIT_DIR 等が残っていると --dir ではなく環境の指すリポジトリで判定され、
+# 別リポジトリの light 宣言で確認を緩められる。一覧は git 自身に出させて漏れを防ぐ
+for _v in $(git rev-parse --local-env-vars 2>/dev/null); do unset "$_v"; done
+unset _v
+# git replace で ref 上の設定ファイルを別の内容にすり替えられるのを防ぐ
+export GIT_NO_REPLACE_OBJECTS=1
+
 # 環境の git 設定・ホームの設定に判定を左右させない
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_SYSTEM=/dev/null
 export GIT_CONFIG_NOSYSTEM=1
 
+# 不正な UTF-8 を含む文字列は全体を置き換える。そのまま出すと JSON が壊れ、受け手が読めずに
+# 判定結果ごと失われる。iconv が無ければ非 ASCII を含むものを一律で置き換える
+valid_utf8() {
+  if command -v iconv >/dev/null 2>&1; then
+    printf '%s' "$1" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1
+  else
+    ! LC_ALL=C grep -q -P '[^\x00-\x7f]' <<<"$1"
+  fi
+}
+
 json_escape() {
   local s="$1" out="" ch i code
+  if ! valid_utf8 "$s"; then
+    s="(不正な文字列)"
+  fi
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
   for ((i = 0; i < ${#s}; i++)); do
@@ -75,28 +95,38 @@ if [[ -z "$DIR" ]]; then
   emit
 fi
 
+# 警告文の他の部分（--dir など）を残すため、置換はパス部分だけに行う
+DIR_SHOWN="$DIR"
+valid_utf8 "$DIR" || DIR_SHOWN="(不正な文字列)"
+
 if [[ ! -d "$DIR" ]]; then
-  WARNINGS+=("--dir のパスが存在しない: $DIR。strict で扱う")
+  WARNINGS+=("--dir のパスが存在しない: $DIR_SHOWN。strict で扱う")
   emit
 fi
 
 ROOT="$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)"
 if [[ -z "$ROOT" ]]; then
-  WARNINGS+=("--dir が git リポジトリではない: $DIR。strict で扱う")
+  WARNINGS+=("--dir が git リポジトリではない: $DIR_SHOWN。strict で扱う")
   emit
 fi
 
 # origin/HEAD が指すブランチ → origin/main → origin/master の順
 REF=""
+MAX_CONF_BYTES=65536
 HEAD_REF="$(git -C "$ROOT" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)"
 HEAD_REF="${HEAD_REF#refs/remotes/}"
 for cand in "$HEAD_REF" origin/main origin/master; do
   [[ -n "$cand" ]] || continue
   if git -C "$ROOT" rev-parse -q --verify "refs/remotes/$cand^{commit}" >/dev/null 2>&1; then
     REF="$cand"
+    REF_SHA="$(git -C "$ROOT" rev-parse -q --verify "refs/remotes/$cand^{commit}" 2>/dev/null)"
     break
   fi
 done
+
+if [[ -n "$REF" && -n "$HEAD_REF" && "$REF" != "$HEAD_REF" ]]; then
+  WARNINGS+=("origin/HEAD が指す refs/remotes/$HEAD_REF を解決できず、$REF で代用した")
+fi
 
 if [[ -z "$REF" ]]; then
   WARNINGS+=("origin の既定ブランチの ref を確認できない。strict で扱う")
@@ -135,32 +165,45 @@ parse_conf() {
 # `$()` は末尾の改行を落とすが、行単位で読むので最終行の改行有無は影響しない。
 REF_CONTENT=""
 REF_HAS_FILE=0
-if git -C "$ROOT" cat-file -e "$REF:$CONF_PATH" 2>/dev/null; then
+REF_TOO_BIG=0
+# 短縮名 origin/main で読むと、同名のタグ・ブランチ（tags → heads → remotes の順で解決される）に
+# ref を上書きされる。確認済みの完全修飾名から求めた SHA で読めば曖昧さが残らない
+if git -C "$ROOT" cat-file -e "$REF_SHA:$CONF_PATH" 2>/dev/null; then
   REF_HAS_FILE=1
-  REF_CONTENT="$(git -C "$ROOT" show "$REF:$CONF_PATH" 2>/dev/null)"
+  REF_SIZE="$(git -C "$ROOT" cat-file -s "$REF_SHA:$CONF_PATH" 2>/dev/null)"
+  if [[ "$REF_SIZE" =~ ^[0-9]+$ && $REF_SIZE -le $MAX_CONF_BYTES ]]; then
+    REF_CONTENT="$(git -C "$ROOT" show "$REF_SHA:$CONF_PATH" 2>/dev/null)"
+  else
+    REF_TOO_BIG=1
+  fi
 fi
 
 if [[ $REF_HAS_FILE -eq 1 ]]; then
   SOURCE="$REF:$CONF_PATH"
   FILE="$CONF_PATH"
-  parse_conf "$REF_CONTENT"
-  if [[ $PARSED_UNKNOWN -eq 1 ]]; then
-    WARNINGS+=("未知のキーを無視した: $CONF_PATH")
-  fi
-  if [[ $PARSED_COUNT -eq 0 ]]; then
-    WARNINGS+=("confirm_level の指定が無い。strict で扱う")
-  elif [[ $PARSED_COUNT -gt 1 ]]; then
-    WARNINGS+=("confirm_level の値が不正値（キーの重複）。strict で扱う")
-    WARNINGS+=("confirm_level のキーの重複がある")
-  elif [[ "$PARSED_VALUE" == "light" ]]; then
-    LEVEL="light"
-  elif [[ "$PARSED_VALUE" != "strict" ]]; then
-    WARNINGS+=("confirm_level の値が不正値。strict で扱う")
+  if [[ $REF_TOO_BIG -eq 1 ]]; then
+    WARNINGS+=("設定ファイルが大きすぎる。読まずに strict で扱う: $CONF_PATH")
+  else
+    parse_conf "$REF_CONTENT"
+    if [[ $PARSED_UNKNOWN -eq 1 ]]; then
+      WARNINGS+=("未知のキーを無視した: $CONF_PATH")
+    fi
+    if [[ $PARSED_COUNT -eq 0 ]]; then
+      WARNINGS+=("confirm_level の指定が無い。strict で扱う")
+    elif [[ $PARSED_COUNT -gt 1 ]]; then
+      WARNINGS+=("confirm_level の値が不正値（キーの重複）。strict で扱う")
+      WARNINGS+=("confirm_level のキーの重複がある")
+    elif [[ "$PARSED_VALUE" == "light" ]]; then
+      LEVEL="light"
+    elif [[ "$PARSED_VALUE" != "strict" ]]; then
+      WARNINGS+=("confirm_level の値が不正値。strict で扱う")
+    fi
   fi
 fi
 
 # ref 上が light なら作業ツリーは見ない。それ以外で作業ツリーが light を宣言していたら警告する
-if [[ "$LEVEL" != "light" && -f "$ROOT/$CONF_PATH" ]]; then
+if [[ "$LEVEL" != "light" && -f "$ROOT/$CONF_PATH" ]] \
+  && [[ "$(stat -c %s "$ROOT/$CONF_PATH" 2>/dev/null)" -le $MAX_CONF_BYTES ]]; then
   parse_conf "$(cat "$ROOT/$CONF_PATH" 2>/dev/null)"
   if [[ $PARSED_COUNT -eq 1 && "$PARSED_VALUE" == "light" ]]; then
     WARNINGS+=("未マージの light 宣言は無視した。$REF に取り込まれるまで strict")
