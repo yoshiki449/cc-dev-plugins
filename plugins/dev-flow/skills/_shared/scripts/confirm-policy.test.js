@@ -189,3 +189,47 @@ test('AC12: 「自動採用した判断」が E2 節の「2. 含める内容:」
   assert.ok(from < to, '「2. 含める内容:」が「3. 複数リポジトリの場合は」より後ろにある');
   assert.ok(e2.slice(from, to).includes(AUTO_ADOPT_ITEM), `含める内容の箇条書きに「${AUTO_ADOPT_ITEM}」が無い`);
 });
+
+const HANDOVER_TEMPLATE = path.join(SKILLS, '_shared', 'reference', 'handover-template.md');
+const STOP_WORDS = ['ここで止まる', 'スキップ不可'];
+
+test('AC13: 通常版・loop 版の2行目に、明示された停止点（ここで止まる・スキップ不可）と4種の両方があり、strict / light も残っている', () => {
+  const ref = read(REFERENCE);
+  const lines = {
+    'confirm-policy': markedBy(ref, 'confirm-policy', 'reference')[1],
+    'confirm-policy-loop': markedBy(ref, 'confirm-policy-loop', 'reference')[1],
+  };
+  for (const [kind, line] of Object.entries(lines)) {
+    for (const w of STOP_WORDS) assert.ok(line.includes(w), `${kind} の2行目に「${w}」が無い`);
+    for (const k of MUST_ASK) assert.ok(line.includes(k), `${kind} の2行目に「${k}」が無い`);
+    for (const w of ['strict', 'light']) assert.ok(line.includes(w), `${kind} の2行目に「${w}」が無い`);
+  }
+  assert.equal(markedBy(ref, 'confirm-policy', 'reference').length, 4, '通常版は4行のまま');
+  assert.equal(markedBy(ref, 'confirm-policy-loop', 'reference').length, 4, 'loop 版は4行のまま');
+});
+
+test('AC14: 通常版の3行目は引継書の ## Deviations を書き先に示し、loop 版の3行目は進捗ファイルの ## Deviations を示す', () => {
+  const ref = read(REFERENCE);
+  const normal = markedBy(ref, 'confirm-policy', 'reference')[2];
+  for (const w of ['引継書', '## Deviations', '無ければ足す', '自動採用', '推奨案で進める']) {
+    assert.ok(normal.includes(w), `通常版の3行目に「${w}」が無い`);
+  }
+  const loop = markedBy(ref, 'confirm-policy-loop', 'reference')[2];
+  for (const w of ['進捗ファイル', '## Deviations', '自動採用', '推奨案で進める']) {
+    assert.ok(loop.includes(w), `loop 版の3行目に「${w}」が無い`);
+  }
+});
+
+test('AC15: 引継書テンプレートの共通セクションに ## Deviations 節があり、未解決事項の後・ユーザー指示の前にある', () => {
+  const common = section(read(HANDOVER_TEMPLATE), '## 共通セクション');
+  const m = common.match(/```markdown\n([\s\S]*?)\n```/);
+  assert.ok(m, '共通セクションに ```markdown ブロックが無い');
+  const block = m[1];
+  const dev = section(block, '## Deviations');
+  assert.ok(dev.includes('自動採用:'), 'Deviations 節に「自動採用:」の書式が無い');
+  assert.ok(dev.includes('逸脱なし'), 'Deviations 節に「逸脱なし」が無い');
+  const at = (h) => block.indexOf(`\n${h}`);
+  const [a, b, c] = ['## 未解決事項（承認済み保留）', '## Deviations', '## ユーザー指示・フィードバック'].map(at);
+  assert.ok(a !== -1 && b !== -1 && c !== -1, '見出しが揃っていない');
+  assert.ok(a < b && b < c, '見出しの順が 未解決事項 < Deviations < ユーザー指示 になっていない');
+});
