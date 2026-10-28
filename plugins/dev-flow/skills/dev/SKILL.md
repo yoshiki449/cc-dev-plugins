@@ -65,7 +65,7 @@ Phase N+1: /dev-implement → /dev-verify → （fixがあれば /dev-fix）
 4. 直前Phaseの実装が完了し未検証 → `/dev-verify` を案内
 5. 実装タスク（未着手Phase）が残っている → `/dev-implement` を案内
 6. ユーザーから修正希望がある → `/dev-fix` を案内
-7. テスト仕様書が未作成 → `/dev-test-spec` を案内（小規模修正の場合はスキップ可）
+7. テスト仕様書が未作成 → `bash skills/_shared/scripts/flow-options.sh --dir <作業リポジトリ>` の `test_spec` を見る。`on` なら `/dev-test-spec` を案内、`off` なら飛ばして 8 へ（[要否設定](../_shared/reference/flow-options.md)）。`unset` は従来どおり `/dev-test-spec` を案内（小規模修正の場合はスキップ可）
 8. 全Phaseの実装・検証が完了し `.agent/reports/qa-report-*.md`（旧形式 `.agent/qa-report-*.md` も可）が未作成 → `/dev-qa` を案内
 9. QA完了・`.agent/test-ledger/<Issue番号>.md` が未生成 or 古い（test-spec や実装の更新後） → `/dev-test-ledger`（統合モード）を案内
 10. PRが未作成 → `/dev-ship` を案内
