@@ -528,3 +528,53 @@ test('upstream 設定済み（実際の push 経路）では push 済みのコ�
   assert.strictEqual(r.status, 0, 'push 済みのコミットまで走査してはいけない');
   assert.match(r.stderr, /スキャン対象の差分なし/);
 });
+
+// ---------------------------------------------------------------------------
+// 生成物・ロックファイルは「長い英数字」パターンだけ対象外（v0.3.3）
+// ---------------------------------------------------------------------------
+
+for (const p of [
+  'dist/results.js',
+  'build/app.js',
+  'vendor/lib.js',
+  'static/app.min.js',
+  'static/app.js.map',
+  'go.sum',
+  'web/yarn.lock',
+]) {
+  test(`生成物/ロックファイル(${p})の長い英数字は誤検出しない`, () => {
+    const repo = mkRepo({ [p]: `const blob = "${LONG_ALNUM}";\n` });
+    const r = run(repo);
+    assert.strictEqual(r.status, 0, `生成物の長い英数字まで止めてはいけない\n${r.stderr}`);
+  });
+}
+
+test('生成物でも変数代入（パターン2）は見続ける', () => {
+  const repo = mkRepo({ 'dist/config.js': kv(K.password, FAKE_PASSWORD_VALUE) + '\n' });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, 'dist/ 配下の変数代入を見逃した');
+  assert.match(r.stderr, /PASSWORD\/API_TOKEN 等の変数代入/);
+});
+
+test('生成物でも既知トークン形式（パターン1）は見続ける', () => {
+  const token = 'gh' + 'p_' + 'A1b2C3d4'.repeat(5);
+  const repo = mkRepo({ 'dist/bundle.min.js': `var t="${token}";\n` });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1, 'dist/ 配下のトークン形式を見逃した');
+  assert.match(r.stderr, /SaaS\/Cloud トークン形式/);
+});
+
+test('通常ファイルの長い英数字は引き続き検出し、Claude 判断の案内を出す', () => {
+  const repo = mkRepo({ 'src/blob.js': `const blob = "${LONG_ALNUM}";\n` });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /Claude 自身が該当行を確認/);
+});
+
+test('変数代入が含まれる検出ではユーザー確認の案内になる', () => {
+  const repo = mkRepo({ 'src/cfg.js': kv(K.password, FAKE_PASSWORD_VALUE) + '\n' });
+  const r = run(repo);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /ユーザーに報告し、判断を仰いで/);
+  assert.doesNotMatch(r.stderr, /Claude 自身が該当行を確認/);
+});

@@ -27,13 +27,14 @@ fi
 TMP=$(mktemp /tmp/secret-scan-XXXXXX) || exit 0
 FILES_LIST=$(mktemp /tmp/secret-scan-files-XXXXXX) || exit 0
 TMP_NONTEST=$(mktemp /tmp/secret-scan-nontest-XXXXXX) || exit 0
+TMP_NOGEN=$(mktemp /tmp/secret-scan-nogen-XXXXXX) || exit 0
 VIO_PREFIX=$(mktemp /tmp/secret-scan-prefix-vio-XXXXXX) || exit 0
 VIO_VARS=$(mktemp /tmp/secret-scan-vars-vio-XXXXXX) || exit 0
 VIO_LONG=$(mktemp /tmp/secret-scan-long-vio-XXXXXX) || exit 0
 # クリーンアップはすべて実パスの変数参照で行う（glob 頼みにしない）。
 # glob（/tmp/secret-scan-nontest-*）で消すと、同時に走っている別プロセスの
 # 未使用でも生存中のファイルまで巻き込んで消しうる（コードレビューで指摘）。
-trap "rm -f $TMP $FILES_LIST $TMP_NONTEST $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
+trap "rm -f $TMP $FILES_LIST $TMP_NONTEST $TMP_NOGEN $VIO_PREFIX $VIO_VARS $VIO_LONG 2>/dev/null" EXIT
 
 
 # NUL区切り→1行1レコードへの変換に使う awk 断片。
@@ -90,7 +91,11 @@ fi
 # 検知をすり抜けた。）
 # パースに一切頼らず、信頼できる別ソースから来た一覧を順番で引き当てる
 # ことで、この種のバイパスをクラスごと閉じる。
-awk '
+# パターン3（長い英数字）だけは、生成物・ロックファイルも対象外にする
+# （$TMP_NOGEN に書く）。minified バンドル・go.sum・lock のチェックサムは
+# 「長い英数字」そのもので、実測で停止の大半を占めた。パターン1は全文、
+# パターン2は生成物も見続ける。
+awk -v gen="$TMP_NOGEN" '
   FNR==NR { files[FNR] = $0; next }
   {
     if ($0 ~ /^diff --git /) {
@@ -99,6 +104,7 @@ awk '
         # 出現順が $FILES_LIST の件数を超えた（想定外の食い違い）。
         # 対応関係に自信が持てないので安全側（走査する＝除外しない）に倒す。
         istest = 0
+        isgen = 0
         next
       }
       file = files[file_idx]
@@ -106,9 +112,12 @@ awk '
       istest = (lf ~ /(^|\/)(tests?|specs?|__tests__|__mocks__|mocks?|fixtures?|__fixtures__|testdata)(\/|$)/) \
             || (lf ~ /\.(test|spec)\.[^.\/]*$/) \
             || (lf ~ /(_test|_spec)\.[^.\/]*$/)
+      isgen = (lf ~ /(^|\/)(dist|build|vendor|node_modules|third_party)(\/|$)/) \
+            || (lf ~ /\.min\.(js|css)$/) || (lf ~ /\.map$/) \
+            || (lf ~ /(^|\/)(go\.sum|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|cargo\.lock|poetry\.lock|uv\.lock|composer\.lock|gemfile\.lock)$/)
       next
     }
-    if ($0 ~ /^\+/) { if (!istest) print }
+    if ($0 ~ /^\+/) { if (!istest) { print; if (!isgen) print > gen } }
   }
 ' "$FILES_LIST" "$TMP" > "$TMP_NONTEST" 2>/dev/null || true
 
@@ -190,7 +199,7 @@ done < <(grep -nE "$DETECT2" "$TMP_NONTEST" 2>/dev/null) > "$VIO_VARS"
 # 別行に分かれた JSON（`"integrity":\n  "sha512-...=="`）で "integrity" が
 # 値の行に無くなり誤検出していた（実測）。値そのものの形（sha512- 接頭辞）を
 # 直接見れば、キーが同じ行にあるかどうかに依存しない。
-grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP_NONTEST" 2>/dev/null \
+grep -nE '^\+.*[A-Za-z0-9]{40,}' "$TMP_NOGEN" 2>/dev/null \
   | grep -viE 'https?://|sha:|"sha"|@sha256|commit |bytes|base64|<svg|(^|[^A-Za-z])hash([^A-Za-z]|$)|\*{2,}|redacted|integrity|checksum|sha(1|256|384|512)-' \
   | head -50 > "$VIO_LONG" 2>/dev/null || true
 
@@ -227,10 +236,20 @@ fi
   fi
   echo "git push を中止しました。"
   echo ""
-  echo "対処:"
-  echo "  1. 該当の値を ~/.cc-plugins/.env に移動して、コードからは os.environ.get() 等で読む"
-  echo "  2. 誤検出と確信できる場合は ALLOW_SECRETS=1 を環境変数に設定してから再 push"
-  echo "  3. プレースホルダ用の文字列なら <...>, your-..., replace-with-... 等の表記に変える"
+  if [ "$COUNT_PREFIX" -eq 0 ] && [ "$COUNT_VARS" -eq 0 ]; then
+    # 40文字以上の長い英数字だけ。誤検出が圧倒的に多いので、毎回ユーザーに
+    # 聞かず Claude が差分を見て判断してよい（その代わり最終報告に残す）。
+    echo "対処（40文字以上の長い英数字のみの検出）:"
+    echo "  1. Claude 自身が該当行を確認する。ハッシュ・チェックサム・base64 データ・生成物など、"
+    echo "     秘密でないと言い切れる場合は ALLOW_SECRETS=1 を付けて再 push してよい。"
+    echo "     ユーザーへの最終報告に「何を誤検出と判断して飛ばしたか」を必ず書く。"
+    echo "  2. 秘密かもしれない、または判断に迷う場合は飛ばさず、ユーザーに報告して判断を仰ぐ。"
+  else
+    echo "対処:"
+    echo "  1. 該当の値を ~/.cc-plugins/.env に移動して、コードからは os.environ.get() 等で読む"
+    echo "  2. 誤検出と確信できる場合は、差分を示してユーザーに報告し、判断を仰いでから ALLOW_SECRETS=1 で再 push"
+    echo "  3. プレースホルダ用の文字列なら <...>, your-..., replace-with-... 等の表記に変える"
+  fi
 } >&2
 
 exit 1
