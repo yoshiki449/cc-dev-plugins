@@ -372,7 +372,9 @@ E2E テストを含むプロジェクト（`playwright.config.{ts,js,mjs,cjs}` �
    <!-- resume-prompt:show -->
    - 引継書を書いたら、`bash skills/_shared/scripts/resume-prompt.sh <次フェーズのスキル名>` を実行し、出力をコードブロックのままチャットに表示して「/clear のあと、このブロックをそのまま貼ってください」と伝える。次に進むかの確認は、この表示のあとに行う
    <!-- /resume-prompt:show -->
-4. ユーザーに「/clear して次フェーズ（/dev-implement）に進めますか？」と確認
+4. 実装への進み方を案内する（基本は `/dev-run`、慎重に進めたいときは `/dev-implement`）:
+   - 基本: 「/clear して `/dev-run implement,verify,qa,ship` に進めますか？」（フェーズ境界の確認を挟まず ship の手前まで通す。止まる条件は [dev-run](../dev-run/SKILL.md) の R4）
+   - 慎重に進めたい場合（フェーズごとに確認したい・Phase を1つずつ見たい）: 「/clear して `/dev-implement` から進めてください」と併記する（上の再開プロンプトはこちら用）
 
 ## 出力
 - `.agent/handover-YYYYMMDD-HHMM-issue<番号>.md`（引継書・新規作成、worktree 絶対パス必須）

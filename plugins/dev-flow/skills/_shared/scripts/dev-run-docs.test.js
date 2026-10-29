@@ -38,3 +38,18 @@ test('boundary=none でも dev-loop の既定の境界確認（L1.5d）は残っ
   assert.match(LOOP, /#### L1\.5d 境界確認 AskUserQuestion/);
   assert.match(LOOP, /\| 完了（推奨） \|/);
 });
+
+test('dev-setup は実装への案内で /dev-run を基本とし、/dev-implement を慎重派の選択肢として併記する', () => {
+  const setup = read('dev-setup');
+  const m = setup.match(/4\. 実装への進み方を案内する[^\n]*\n([\s\S]*?)\n\n## 出力/);
+  assert.ok(m, '案内の節が無い');
+  const [base, careful] = m[1].split('\n').filter((l) => l.trim().startsWith('- '));
+  assert.match(base, /基本: .*`\/dev-run implement,verify,qa,ship`/);
+  assert.match(careful, /慎重に進めたい場合.*`\/dev-implement`/);
+});
+
+test('dev ルーターは未着手 Phase の案内で /dev-run を基本とし、/dev-implement を併記する', () => {
+  const line = read('dev').split('\n').find((l) => l.startsWith('5. 実装タスク'));
+  assert.ok(line, 'ルーターの 5 行目が無い');
+  assert.match(line, /基本は `\/dev-run implement,verify,qa,ship`.*慎重.*`\/dev-implement`/);
+});

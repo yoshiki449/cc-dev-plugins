@@ -63,7 +63,7 @@ Phase N+1: /dev-implement → /dev-verify → （fixがあれば /dev-fix）
 2. 新規UIを伴う案件で claude.ai/design プロジェクト未作成 → `/dev-design` を案内（UIなし案件はスキップ）
 3. 開発環境が未構築 → `/dev-setup` を案内
 4. 直前Phaseの実装が完了し未検証 → `/dev-verify` を案内
-5. 実装タスク（未着手Phase）が残っている → `/dev-implement` を案内
+5. 実装タスク（未着手Phase）が残っている → 基本は `/dev-run implement,verify,qa,ship` を案内し、慎重に進めたい場合は `/dev-implement` から進める選択肢を併記する
 6. ユーザーから修正希望がある → `/dev-fix` を案内
 7. テスト仕様書が未作成 → `bash skills/_shared/scripts/flow-options.sh --dir <作業リポジトリ>` の `test_spec` を見る。`on` なら `/dev-test-spec` を案内、`off` なら飛ばして 8 へ（[要否設定](../_shared/reference/flow-options.md)）。`unset` は従来どおり `/dev-test-spec` を案内（小規模修正の場合はスキップ可）
 8. 全Phaseの実装・検証が完了し `.agent/reports/qa-report-*.md`（旧形式 `.agent/qa-report-*.md` も可）が未作成 → `/dev-qa` を案内
