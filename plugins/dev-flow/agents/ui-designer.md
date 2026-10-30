@@ -35,7 +35,18 @@ model: opus
    - フォームフィールド定義（型、バリデーション、必須/任意）
 4. **既存コンポーネント再利用マップ**
 5. **アクセシビリティ考慮事項**
-6. **UI/UXチェック結果** — `skills/_shared/reference/ui-ux-checklist.md` の区分が **設** の項目を判定した結果（下記）
+6. **UI部品方針** — `docs/dev-flow/ui-policy.md` の level と、この画面固有の例外（下記）
+7. **UI/UXチェック結果** — `skills/_shared/reference/ui-ux-checklist.md` の区分が **設** の項目を判定した結果（下記）
+
+#### UI部品方針の書き方
+
+<!-- ui-ux-checklist:parts-policy -->
+UI 部品方針は `docs/dev-flow/ui-policy.md` の `level:` で決める（A 標準許容 / B 標準+トークン適用 / C デザインシステム必須。ファイルが無ければ B とし「方針未設定」と報告する）。DESIGN.md の「UI部品方針」に例外があればそれに従う。
+<!-- /ui-ux-checklist:parts-policy -->
+
+- `docs/dev-flow/ui-policy.md` を読み、level を DESIGN.md の「UI部品方針」節に引用する。この画面だけの例外（部品と理由）があれば足す
+- ファイルが無いとき: 既定の B で DESIGN.md を書き、「レビューしてほしい判断」に「プロジェクトの UI 部品方針（level A/B/C とデザインシステムの有無）を決めて `docs/dev-flow/ui-policy.md` に記録する」を入れる。ファイルは勝手に作らない
+- `design_system:` がある場合、「既存コンポーネント再利用マップ」はその部品名で書く
 
 #### UI/UXチェック結果の書き方
 

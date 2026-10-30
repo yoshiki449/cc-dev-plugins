@@ -76,3 +76,57 @@ test('AC6: 正準の1文が判定の4値と素通り禁止を持つ', () => {
   const line = marked(read(REFERENCE), 'reference').join('');
   for (const w of ['OK', 'NG', '対象外', '判定不可', '黙って素通りしない']) assert.ok(line.includes(w), `正準に「${w}」がない`);
 });
+
+// ---- G 群（HTML 標準部品・デザインシステムの扱い） ----
+// 正準の1文は「ui-ux-checklist:parts-policy」マーカー。3 agent が byte-identical で複製する。
+
+function policyMarked(md, where) {
+  const m = md.match(/<!-- ui-ux-checklist:parts-policy -->\n([\s\S]*?)\n[ \t]*<!-- \/ui-ux-checklist:parts-policy -->/);
+  assert.ok(m, `${where}: ui-ux-checklist:parts-policy のマーカーが見つからない`);
+  return m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+test('AC7: 3 agent の parts-policy マーカーが正準と byte-identical である', () => {
+  const canonical = policyMarked(read(REFERENCE), 'reference');
+  for (const name of CONSUMERS) {
+    assert.deepEqual(
+      policyMarked(read(agent(name)), name),
+      canonical,
+      `${name} の parts-policy が reference と食い違っている。両方を同時に直すこと`,
+    );
+  }
+});
+
+test('AC8: 正準の1文が記録先・3レベル・未設定時の既定を持つ', () => {
+  const line = policyMarked(read(REFERENCE), 'reference').join('');
+  for (const w of ['docs/dev-flow/ui-policy.md', 'level:', 'A', 'B', 'C', 'ファイルが無ければ B', '方針未設定']) {
+    assert.ok(line.includes(w), `正準に「${w}」がない`);
+  }
+});
+
+test('AC9: G1〜G4 があり、区分・強度が設計どおり(G1 設 / G2 画 / G3 操 / G4 画。G4 だけ推奨)', () => {
+  const byId = Object.fromEntries(items().map((i) => [i.id, i]));
+  const want = { G1: ['設', '必須'], G2: ['画', '必須'], G3: ['操', '必須'], G4: ['画', '推奨'] };
+  for (const [id, [kind, level]] of Object.entries(want)) {
+    assert.ok(byId[id], `${id} がない`);
+    assert.equal(byId[id].kind, kind, `${id} の区分`);
+    assert.equal(byId[id].level, level, `${id} の強度`);
+  }
+});
+
+test('AC10: ブラウザ標準ダイアログは level A だけ許容、B・C は NG と表に書かれている', () => {
+  const md = read(REFERENCE);
+  const rows = Object.fromEntries(
+    [...md.matchAll(/^\| ([ABC]) [^|]+\| [^|]+\| [^|]+\| ([^|]+) \|$/gm)].map((m) => [m[1], m[2].trim()]),
+  );
+  assert.equal(rows.A, '許容');
+  assert.ok(rows.B.startsWith('NG'), `B のダイアログ列: ${rows.B}`);
+  assert.ok(rows.C.startsWith('NG'), `C のダイアログ列: ${rows.C}`);
+});
+
+test('AC11: ui-designer は DESIGN.md の「UI部品方針」節と ui-policy.md を、qa-ux-evaluator は ui-policy.md を読む', () => {
+  assert.match(read(agent('ui-designer')), /UI部品方針\*\* — `docs\/dev-flow\/ui-policy\.md`/);
+  assert.ok(read(agent('ui-designer')).includes('ファイルは勝手に作らない'));
+  assert.match(read(agent('qa-ux-evaluator')), /\*\*UI部品方針\*\*（あれば）: `docs\/dev-flow\/ui-policy\.md`/);
+  assert.ok(read(agent('qa-explorer')).includes('browser_handle_dialog'));
+});

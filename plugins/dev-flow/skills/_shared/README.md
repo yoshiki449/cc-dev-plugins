@@ -12,7 +12,7 @@ dev-plan / dev-setup / dev-implement / dev-verify / dev-qa / dev-fix / dev-ship 
 | `scripts/resume-prompt.sh <次フェーズ> [引継書]` | `/clear` の後に貼る再開プロンプト（「/<次フェーズ> 引継書: <絶対パス>」＋作業場所）を出力。引継書を省略すると `latest-handover.sh` の結果を使う。消費者は「再開プロンプトの消費者」の表 |
 | `scripts/check-handover-secrets.sh <引継書>` | 引継書に資格情報らしい行（パスワード・トークン等の代入、Bearer、URL 埋め込み、既知の接頭辞、秘密鍵）が無いか走査する。検出した値は出力せず「ファイル:行番号: 種類」だけを返す（exit 1=検出あり）。引継書をリポジトリで共有するとき、コミットの前に使う |
 | `scripts/extract-issue-number.sh [handover]` | 引継書／ブランチ名から Issue 番号を抽出 |
-| `reference/ui-ux-checklist.md` | UI/UX の共通チェックリスト（項目ID・区分 画/操/設・強度 必須/推奨）。消費者は `qa-ux-evaluator` / `qa-explorer` / `ui-designer`。正準の1文は `ui-ux-checklist:apply` マーカー |
+| `reference/ui-ux-checklist.md` | UI/UX の共通チェックリスト（項目ID・区分 画/操/設・強度 必須/推奨）。消費者は `qa-ux-evaluator` / `qa-explorer` / `ui-designer`。G 群が HTML 標準部品・デザインシステムの扱い（`docs/dev-flow/ui-policy.md` の level A/B/C）。正準の1文は `ui-ux-checklist:apply` マーカー |
 | `reference/qc-overlay.md` | 組織固有の QC 観点を外から差し込む契約（入力／出力／責務の境界）。判定器は `scripts/qc-overlay.sh` |
 | `scripts/qc-overlay.sh --phase <phase>` | overlay の適用状況を JSON 1 行で返す。判定材料は `overlay_present` ではなく `overlay_applied` |
 | `reference/test-tier-model.md` | 自動／手動の振り分け基準（overlay の有無に依存しない。観点の網羅リストは overlay 側） |

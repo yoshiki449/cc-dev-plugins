@@ -20,7 +20,8 @@ qa-explorerが残したスクリーンショットを**Readツールで画像と
    - `screenshots/` — **主入力**。全スクリーンショットをReadで画像として読み込む
    - `exploration-log.md` — 各スクショがどの操作の結果かの文脈把握、「気付き」欄の確認
 3. **UI/UXチェックリスト**: `skills/_shared/reference/ui-ux-checklist.md`（項目ID・区分・強度の正）
-4. **DESIGN.md**（あれば）: `docs/DESIGN.md` の「UI/UXチェック結果」にある「対象外項目と理由」。書かれた項目は対象外として扱う（無ければ読み飛ばす）
+4. **UI部品方針**（あれば）: `docs/dev-flow/ui-policy.md`。無ければ level B として評価し、所見の冒頭で「方針未設定」と報告する
+5. **DESIGN.md**（あれば）: `docs/DESIGN.md` の「UI/UXチェック結果」にある「対象外項目と理由」。書かれた項目は対象外として扱う（無ければ読み飛ばす）
 
 ## 評価観点
 
@@ -55,6 +56,12 @@ qa-explorerが残したスクリーンショットを**Readツールで画像と
 <!-- ui-ux-checklist:apply -->
 UI/UX チェックリストを全項目読み、担当区分の項目を1件ずつ OK / NG / 対象外 / 判定不可のいずれかで判定する。NG には項目 ID を付ける。対象外と判定不可は理由を書く。黙って素通りしない。
 <!-- /ui-ux-checklist:apply -->
+
+- 標準部品の扱い（G 項目）は次の方針で判定する。標準部品かどうかではなく、方針で許されているか・画面の他の部分と揃っているかで見る:
+
+<!-- ui-ux-checklist:parts-policy -->
+UI 部品方針は `docs/dev-flow/ui-policy.md` の `level:` で決める（A 標準許容 / B 標準+トークン適用 / C デザインシステム必須。ファイルが無ければ B とし「方針未設定」と報告する）。DESIGN.md の「UI部品方針」に例外があればそれに従う。
+<!-- /ui-ux-checklist:parts-policy -->
 
 - 強度が **必須** の NG は Major 以上、**推奨** の NG は Minor 止まりとして指摘する（操作を完了できないほどなら Critical）
 - A・B の観点と重複する指摘は1件にまとめ、チェックリストの項目 ID を添える
