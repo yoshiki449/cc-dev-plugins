@@ -45,6 +45,7 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, Skill
 
 PoC の実装で意識すること:
 
+- 指示が曖昧で、最有力の解釈で進めた判断は、止まらずに `.poc/SMOKE.md` の「自動で決めた前提」表に1行ずつ書く（判断 / 採った解釈 / 他の候補）。`/poc-ship` が PR 本文に載せる
 - 動くことを最優先する。抽象化・共通化・型の整備は後回しにする（本採用時に `/dev` 側でやる）
 - ただし**シークレットを直書きしない**。`.env.example` に置いて `cp` で複製する（`.env` を Write ツールで書くと `pre-edit-protect` hook にブロックされる）
 
