@@ -316,6 +316,7 @@ const ALLOWED_REFERENCES = [
   'size-tier-conf.md',
   'subagent-output-contract.md',
   'test-tier-model.md',
+  'ui-ux-checklist.md',
 ];
 
 test('AC20: _shared/reference/ は allowlist のファイルだけを持つ', () => {
