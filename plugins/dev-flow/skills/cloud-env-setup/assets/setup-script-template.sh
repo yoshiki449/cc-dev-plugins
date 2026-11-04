@@ -69,7 +69,8 @@ XML
 # ⚠ Docker Hub のイメージ本体は production.cloudfront.docker.com から配られるが、既定の許可リストに無い。
 #    環境の Network access を Custom にし「既定のリストを含める」にチェックしてこのドメインを足す
 # 作業ディレクトリに依存しないよう、compose ファイルは読まずにイメージ名を並べる
-# ( for img in <イメージ名:タグ> ...; do docker pull "$img"; done ) > /opt/setup-log/docker.log 2>&1 || true &
+# （docker CLI は入っているがデーモンは未起動なので、pull の前に dockerd を起こす）
+# ( { docker info >/dev/null 2>&1 || { (nohup dockerd >/opt/setup-log/dockerd.log 2>&1 &); for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done; }; for img in <イメージ名:タグ> ...; do docker pull "$img"; done; } > /opt/setup-log/docker.log 2>&1 || true &
 
 # Go を使うリポジトリ: VM に Go はプリインストールされていない（npm/pip/uv は Node/Python が VM 側に
 # あるため気づきにくいが、Go だけは無い）。apt 版 golang-go は go.mod の要求より古いことが多いため、
