@@ -189,7 +189,78 @@ fi
 # これは「うっかり」と「よくある迂回」を止めるための網であり、悪意のある回避に耐える境界ではない。
 # 境界にするなら、GitHub 側のブランチ保護（必須レビュー）か、Claude Code の permissions.ask を併用する。
 ASK_HIDDEN_REASON="[dev-flow] デコードして実行する、またはシェルへ流し込むコマンドです。PR のマージを含んでいないか確かめたうえで、実行前に承認してください（マージは取り消せません）。"
-if printf '%s' "$MERGE_TEXT" | grep -qE 'base64[[:space:]]+(-[a-zA-Z]*[dD]|--decode)|xxd[[:space:]]+-[a-zA-Z]*r|openssl[[:space:]]+(enc|base64)[[:space:]]+[^|;&]*-d' \
+DECODE_RE='base64[[:space:]]+(-[a-zA-Z]*[dD]|--decode)|xxd[[:space:]]+-[a-zA-Z]*r|openssl[[:space:]]+(enc|base64)[[:space:]]+[^|;&]*-d'
+# デコード（base64 -d / xxd -r / openssl -d）そのものは危険ではない。危険なのは出力が**実行される**こと。
+# `gh api ... --jq .content | base64 -d | grep ...` のような読み取りは確認を出さない（誤検知の緩和）。
+# 判定は decode_is_risky に任せる。確認に倒すのは次のいずれか:
+#   - デコードのコマンドが先頭語ではない（`bash -c "…base64 -d…"` `xargs base64 -d` など）
+#   - コマンド置換・サブシェル・プロセス置換・バッククォートの中にある（出力が引数や実行対象になりうる）
+#   - 出力が `>` でファイルへ書かれる（あとで実行できる。/dev/null と fd の複製は除く）
+#   - 出力のパイプの先に、読み取り専用の許可リスト以外のコマンドがある
+# 許可リストは cat head tail grep egrep fgrep wc uniq cut tr jq nl column fold od hexdump sha*sum md5sum cmp。
+# sed / awk / sort / rg / xargs / tee は入れない（実行や書き込みの機能があるため: sed の e、awk の system、
+# sort --compress-program、rg --pre）。シェルへの流し込み（`| sh` `| bash` `eval` `source`）は
+# このあとの別の判定が引き続き拾う。区切りの解析は引用符を数える（`grep -E "a|b"` の `|` は区切りではない）。
+decode_is_risky() {
+  printf '%s' "$1" | tr '\n' '\002' | awk -v DEC="$DECODE_RE" '
+    function newstage(sep) { n++; raw[n] = ""; red[n] = 0; dep[n] = dp + bt; sepb[n] = sep }
+    function strip(x) { gsub("[\\\\\"\047]", "", x); return x }
+    function firstword(x,  w) {
+      x = strip(x)
+      while (1) {
+        sub(/^[ \t]+/, "", x)
+        if (match(x, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*/)) { x = substr(x, RLENGTH + 1); continue }
+        break
+      }
+      match(x, /^[^ \t]*/); w = substr(x, 1, RLENGTH); sub(/^.*\//, "", w); return w
+    }
+    BEGIN {
+      NL = "\002"
+      split("cat head tail grep egrep fgrep wc uniq cut tr jq nl column fold od hexdump sha256sum sha1sum md5sum cmp base64 xxd", a, " ")
+      for (k in a) OK[a[k]] = 1
+    }
+    {
+      s = $0; gsub("\\\\" NL, "", s); L = length(s); n = 0; dp = 0; bt = 0; newstage(";"); i = 1
+      while (i <= L) {
+        c = substr(s, i, 1); nx = substr(s, i + 1, 1)
+        if (c == "\047") { j = index(substr(s, i + 1), "\047"); if (j == 0) j = L - i; raw[n] = raw[n] substr(s, i, j + 1); i += j + 1; continue }
+        if (c == "\"") { j = i + 1; while (j <= L) { d = substr(s, j, 1); if (d == "\\") { j += 2; continue } if (d == "\"") break; j++ } raw[n] = raw[n] substr(s, i, j - i + 1); i = j + 1; continue }
+        if (c == "\\") { raw[n] = raw[n] substr(s, i, 2); i += 2; continue }
+        if (c == "`") { bt = 1 - bt; newstage(";"); i++; continue }
+        if (c == "(") { dp++; newstage(";"); i++; continue }
+        if (c == ")") { if (dp > 0) dp--; newstage(";"); i++; continue }
+        if (c == "|") { if (nx == "|") { newstage(";"); i += 2 } else { i += (nx == "&") ? 2 : 1; newstage("|") } continue }
+        if (c == "&") { if (nx == "&") { newstage(";"); i += 2; continue } if (nx == ">") { raw[n] = raw[n] c; i++; continue } newstage(";"); i++; continue }
+        if (c == ">") {
+          rest = substr(s, i + 1)
+          if (match(rest, /^[|&>]*[ \t]*\/dev\/null/) && substr(rest, RLENGTH + 1, 1) !~ /[A-Za-z0-9_\/.-]/) { i += 1 + RLENGTH; continue }
+          if (rest ~ /^&[0-9-]/) { i += 3; continue }
+          red[n] = 1; i++; continue
+        }
+        if (c == ";" || c == NL) { newstage(";"); i++; continue }
+        raw[n] = raw[n] c; i++
+      }
+      bad = 0
+      for (k = 1; k <= n; k++) {
+        if (strip(raw[k]) !~ DEC) continue
+        w = firstword(raw[k])
+        if (w != "base64" && w != "xxd" && w != "openssl") bad = 1
+        if (dep[k] > 0) bad = 1
+        for (j = k; j <= n; j++) {
+          if (j > k && sepb[j] != "|") break
+          if (red[j]) bad = 1
+          if (j > k && !(firstword(raw[j]) in OK)) bad = 1
+        }
+      }
+      print bad
+    }'
+}
+DECODE_RISKY=0
+if printf '%s' "$MERGE_TEXT" | grep -qE "$DECODE_RE"; then
+  # awk が失敗して空を返したときも確認に倒す（0 のときだけ通す）
+  [ "$(decode_is_risky "$COMMAND")" = 0 ] || DECODE_RISKY=1
+fi
+if [ "$DECODE_RISKY" = 1 ] \
   || printf '%s' "$MERGE_TEXT" | grep -qE '(^|[^[:alnum:]_-])eval([^[:alnum:]_-]|$)' \
   || printf '%s' "$MERGE_TEXT" | grep -qE '\|[[:space:]]*((sudo|env|command|exec|nohup)[[:space:]]+)*((ba|z|da|k)?sh|source)([^[:alnum:]_-]|$)' \
   || printf '%s' "$MERGE_TEXT" | grep -qE '(python3?|node|perl|ruby)[[:space:]]+-[a-zA-Z]*[ce][[:space:]].*(system|exec|subprocess|spawn|popen)'; then

@@ -814,6 +814,58 @@ test('#64: デコードして実行する・シェルへ流し込む構文は確
   }
 });
 
+test('読み取り専用デコード: デコードの出力が読み取り専用コマンドにだけ渡る形は、確認を出さない', (t) => {
+  const repo = makeRepo(t);
+  for (const command of [
+    'gh api "repos/o/r/contents/.github/workflows/e2e-dev.yml?ref=develop" --jq .content | base64 -d | grep -n -i -E "playwright|e2e"',
+    'cd /tmp && gh api repos/o/r/contents/a.yml --jq .content | base64 -d | grep -n "a|b" ; echo ---; cd /x && grep -r foo . | head -12',
+    "echo Zm9v | base64 -d | head -5",
+    'base64 -d f.b64 | wc -l',
+    'gh api repos/o/r/contents/a --jq .content | base64 --decode | grep -c x | cat',
+    'gh api repos/o/r/contents/a --jq .content | base64 -d 2>/dev/null | grep x',
+    'gh api repos/o/r/contents/a --jq .content | base64 -d 2>&1 | head',
+    'echo Zm9v | base64 -d',
+    'echo Zm9v | base64 -d\nsh run.sh',
+    "gh api repos/o/r/contents/a --jq .content | base64 -d | jq '.name'",
+  ]) {
+    assert.notEqual(runHook({ cwd: repo, command }).outcome, ASK, `過剰に確認が出ている: ${command}`);
+  }
+});
+
+test('読み取り専用デコード: デコードの出力が実行されうる形・書き出される形は、従来どおり確認になる', (t) => {
+  const repo = makeRepo(t);
+  for (const [label, command] of [
+    ['bash へ', 'echo Zm9v | base64 -d | bash'],
+    ['sh へ（grep を挟む）', 'echo Zm9v | base64 -d | grep x | sh'],
+    ['xargs へ', 'echo Zm9v | base64 -d | xargs gh'],
+    ['tee でファイルへ', 'echo Zm9v | base64 -d | tee run.sh'],
+    ['リダイレクトでファイルへ', 'echo Zm9v | base64 -d > run.sh'],
+    ['grep の出力をファイルへ', 'echo Zm9v | base64 -d | grep x > run.sh'],
+    ['sed（e コマンド）へ', "echo Zm9v | base64 -d | sed 's/x/y/e'"],
+    ['コマンド置換の中', 'echo $(echo Zm9v | base64 -d)'],
+    ['バッククォートの中', 'echo `echo Zm9v | base64 -d`'],
+    ['サブシェルの中', '(echo Zm9v | base64 -d)'],
+    ['bash -c の引数', 'bash -c "echo Zm9v | base64 -d | grep x"'],
+    ['引用符で語を割る', 'echo Zm9v | base"64" -d > f'],
+    ['xxd -r をファイルへ', 'xxd -r -p x.hex > run.sh'],
+    ['プロセス置換へ書く', 'base64 -d f >(sh)'],
+    ['パイプ先が波括弧', 'echo Zm9v | base64 -d | { sh; }'],
+    ['eval', 'eval "$(echo Zm9v | base64 -d)"'],
+  ]) {
+    assert.equal(runHook({ cwd: repo, command }).outcome, ASK, `${label}: 確認が出ない: ${command}`);
+  }
+});
+
+test('読み取り専用デコード: 緩めても、デコードを含むコマンドの中のマージは確認になる', (t) => {
+  const repo = makeRepo(t);
+  for (const command of [
+    `echo Zm9v | base64 -d | grep x; ${MERGE_CMD} 1`,
+    `gh api r --jq .content | base64 -d | head && ${MERGE_CMD} 1`,
+  ]) {
+    assert.equal(runHook({ cwd: repo, command }).outcome, ASK, `マージが素通り: ${command}`);
+  }
+});
+
 test('#64: 実行しても gh を引数なしで呼ぶだけの形は、マージとして扱わない', (t) => {
   // `gh$IFSpr$IFSmerge` は変数 $IFSpr と $IFSmerge（どちらも空）なので、実行されるのは `gh` だけ。
   const repo = makeRepo(t);
